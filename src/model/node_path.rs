@@ -3,6 +3,30 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+pub trait NodePathBasicNavigation
+where Self: Sized {
+    fn to(self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>>;
+    fn to_last_valid(self, path: &QualifiedPath) -> NodePath<AnyNodeType>;
+}
+pub trait NodePathFeatureNavigation: NodePathBasicNavigation
+where Self: Sized {
+    fn to_feature(self, path: &QualifiedPath) -> Option<NodePath<Feature>> {
+        match self.to(path)?.concretize() {
+            NodePathType::Feature(path) => Some(path),
+            _ => unreachable!(),
+        }
+    }
+}
+pub trait NodePathProductNavigation: NodePathBasicNavigation
+where Self: Sized {
+    fn to_product(self, path: &QualifiedPath) -> Option<NodePath<Product>> {
+        match self.to(path)?.concretize() {
+            NodePathType::Product(path) => Some(path),
+            _ => unreachable!(),
+        }
+    }
+}
+
 pub enum NodePathType {
     Feature(NodePath<Feature>),
     FeatureRoot(NodePath<FeatureRoot>),
@@ -21,10 +45,10 @@ pub struct NodePath<T: Clone + Debug> {
 
 impl NodePath<AnyNodeType> {
     fn to_concrete_type<T: Clone + Debug>(self) -> NodePath<T> {
-        NodePath::<T>::from_path(self.path)
+        NodePath::<T>::new(self.path)
     }
     pub fn from_concrete<T: Clone + Debug>(other: NodePath<T>) -> Self {
-        Self::from_path(other.path)
+        Self::new(other.path)
     }
     pub fn concretize(self) -> NodePathType {
         match self.get_node().get_type() {
@@ -60,28 +84,19 @@ impl NodePath<Area> {
     }
 }
 
-impl NodePath<ProductRoot> {
-    pub fn to_product(self, path: &QualifiedPath) -> Option<NodePath<Product>> {
-        match self.to(path)?.concretize() {
-            NodePathType::Product(path) => Some(path),
-            _ => unreachable!(),
-        }
-    }
-}
+impl NodePathProductNavigation for NodePath<ProductRoot> {}
+impl NodePathProductNavigation for NodePath<Product> {}
+
+impl NodePathFeatureNavigation for NodePath<FeatureRoot> {}
+impl NodePathFeatureNavigation for NodePath<Feature> {}
 
 impl<T: Clone + Debug> NodePath<T> {
-    fn from_path(path: Vec<Rc<Node>>) -> Self {
-        Self {
-            path,
-            _phantom: PhantomData,
-        }
-    }
     fn get_node(&self) -> &Node {
         self.path.last().unwrap()
     }
-    pub fn new(area: Rc<Node>) -> NodePath<T> {
+    pub fn new(path: Vec<Rc<Node>>) -> NodePath<T> {
         Self {
-            path: vec![area],
+            path,
             _phantom: PhantomData,
         }
     }
@@ -110,17 +125,11 @@ impl<T: Clone + Debug> NodePath<T> {
     pub fn get_metadata(&self) -> &NodeMetadata {
         self.get_node().get_metadata()
     }
-    pub fn to_any_type(self) -> NodePath<AnyNodeType> {
+    pub fn transform_to_any_type(self) -> NodePath<AnyNodeType> {
         NodePath::<AnyNodeType>::from_concrete(self)
     }
-    pub fn to(mut self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>> {
-        for p in path.iter() {
-            self.path.push(self.get_node().get_child(p)?.clone());
-        }
-        Some(NodePath::<AnyNodeType>::from_path(self.path))
-    }
     pub fn to_parent_area(self) -> NodePath<Area> {
-        NodePath::<Area>::new(self.path.first().unwrap().clone())
+        NodePath::<Area>::new(vec![self.path.first().unwrap().clone()])
     }
     pub fn get_qualified_path(&self) -> QualifiedPath {
         let mut path = QualifiedPath::new();
@@ -131,6 +140,28 @@ impl<T: Clone + Debug> NodePath<T> {
     }
     pub fn display_tree(&self, show_tags: bool) -> String {
         self.get_node().display_tree(show_tags)
+    }
+}
+
+impl<T: Clone + Debug> NodePathBasicNavigation for NodePath<T> {
+    fn to(mut self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>> {
+        for p in path.iter_string() {
+            self.path.push(self.get_node().get_child(p)?.clone());
+        }
+        Some(NodePath::<AnyNodeType>::new(self.path))
+    }
+
+    fn to_last_valid(self, path: &QualifiedPath) -> NodePath<AnyNodeType> {
+        let mut current = self.transform_to_any_type();
+        for part in path.iter() {
+            let next = current.clone().to(&part);
+            if next.is_some() {
+                current = next.unwrap();
+            } else {
+                break;
+            }
+        }
+        current
     }
 }
 

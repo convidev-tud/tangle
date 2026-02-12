@@ -20,7 +20,7 @@ fn add_feature(feature: QualifiedPath, context: &mut CommandContext) -> Result<(
     context.log_from_output(&output);
     context.log_to_stdout(format!(
         "Created new feature {}",
-        target_path.strip_n_left(1)
+        target_path.strip_n_left(2)
     ));
     Ok(())
 }
@@ -110,5 +110,83 @@ impl CommandInterface for FeatureCommand {
             }
         };
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::interface::test_utils::{populate_with_features, prepare_empty_git_repo};
+    use crate::git::interface::{GitInterface, GitPath};
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn feature_add_root_from_area() {
+        fn check_existence(interface: &GitInterface) -> Option<NodePath<Feature>> {
+            interface
+                .get_current_area()
+                .unwrap()
+                .to_feature_root()?
+                .to_feature(&QualifiedPath::from("root"))
+        }
+
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        let repo = CommandRepository::new(
+            Box::new(FeatureCommand),
+            GitPath::CustomDirectory(PathBuf::from(path.path())),
+        );
+        match repo.execute(ArgSource::SUPPLIED(vec![
+            "feature", "root"
+        ])) {
+            Ok(_) => {
+                let interface = GitInterface::in_directory(path_buf);
+                check_existence(&interface).unwrap();
+                let branch_history = interface.get_commit_history(&QualifiedPath::from("main/feature/root")).unwrap();
+                let main_history = interface.get_commit_history(&QualifiedPath::from("main")).unwrap();
+                assert_eq!(branch_history, main_history);
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    fn feature_add_recursive_from_area() {
+        fn check_existence(interface: &GitInterface) -> Option<NodePath<Feature>> {
+            interface
+                .get_current_area()
+                .unwrap()
+                .to_feature_root()?
+                .to_feature(&QualifiedPath::from("root"))?
+                .to_feature(&QualifiedPath::from("foo"))?
+                .to_feature(&QualifiedPath::from("1"))
+        }
+
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        let interface = GitInterface::in_directory(path_buf.clone());
+        interface.checkout(&QualifiedPath::from("main/feature/root/foo")).unwrap();
+        interface.empty_commit("test").unwrap();
+        interface.checkout(&QualifiedPath::from("main")).unwrap();
+        let repo = CommandRepository::new(
+            Box::new(FeatureCommand),
+            GitPath::CustomDirectory(path_buf.clone()),
+        );
+        match repo.execute(ArgSource::SUPPLIED(vec![
+            "feature", "root/foo/1"
+        ])) {
+            Ok(_) => {
+                let interface = GitInterface::in_directory(path_buf);
+                check_existence(&interface).unwrap();
+                let branch_history = interface.get_commit_history(&QualifiedPath::from("main/feature/root/foo/1")).unwrap();
+                let foo_history = interface.get_commit_history(&QualifiedPath::from("main/feature/root/foo")).unwrap();
+                assert_eq!(branch_history, foo_history);
+            }
+            Err(e) => panic!("{}", e),
+        }
     }
 }

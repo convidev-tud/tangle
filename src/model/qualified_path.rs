@@ -66,7 +66,7 @@ impl Add for QualifiedPath {
         if new_path.last_is(&QualifiedPath::from("")) && new_path.len() > 1 {
             new_path = new_path.strip_n_right(new_path.len() - 1);
         }
-        for (i, part) in rhs.iter().enumerate() {
+        for (i, part) in rhs.iter_string().enumerate() {
             match part.as_str() {
                 "." => {}
                 ".." => {
@@ -172,7 +172,10 @@ impl QualifiedPath {
     pub fn is_empty(&self) -> bool {
         self.path.is_empty()
     }
-    pub fn iter(&self) -> impl Iterator<Item = &String> {
+    pub fn iter(&self) -> impl Iterator<Item = QualifiedPath> {
+        self.iter_string().map(|s| QualifiedPath::from(s.clone()))
+    }
+    pub fn iter_string(&self) -> impl Iterator<Item = &String> {
         self.path.iter()
     }
     pub fn get(&self, index: usize) -> Option<QualifiedPath> {
@@ -298,6 +301,10 @@ mod tests {
         let r = QualifiedPath::from("foo");
         let l = QualifiedPath::from("");
         assert_eq!(r + l, QualifiedPath::from("foo/"));
+
+        let r = QualifiedPath::from("foo");
+        let l = QualifiedPath::from("/bar/baz");
+        assert_eq!(r + l, QualifiedPath::from("/bar/baz"));
     }
 
     #[test]

@@ -6,6 +6,16 @@ pub struct Commit {
     message: String,
 }
 
+impl PartialEq for Commit {
+    fn eq(&self, other: &Self) -> bool {
+        other.hash == self.hash
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        other.hash != self.hash
+    }
+}
+
 impl Commit {
     pub fn new<S1: Into<String>, S2: Into<String>>(hash: S1, message: S2) -> Self {
         Self {

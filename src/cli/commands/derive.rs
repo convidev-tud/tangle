@@ -196,6 +196,7 @@ mod tests {
     use super::*;
     use crate::git::interface::test_utils::{populate_with_features, prepare_empty_git_repo};
     use crate::git::interface::{GitInterface, GitPath};
+    use crate::model::NodePathProductNavigation;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
