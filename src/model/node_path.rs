@@ -4,12 +4,16 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub trait NodePathBasicNavigation
-where Self: Sized {
+where
+    Self: Sized,
+{
     fn to(self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>>;
     fn to_last_valid(self, path: &QualifiedPath) -> NodePath<AnyNodeType>;
 }
 pub trait NodePathFeatureNavigation: NodePathBasicNavigation
-where Self: Sized {
+where
+    Self: Sized,
+{
     fn to_feature(self, path: &QualifiedPath) -> Option<NodePath<Feature>> {
         match self.to(path)?.concretize() {
             NodePathType::Feature(path) => Some(path),
@@ -18,7 +22,9 @@ where Self: Sized {
     }
 }
 pub trait NodePathProductNavigation: NodePathBasicNavigation
-where Self: Sized {
+where
+    Self: Sized,
+{
     fn to_product(self, path: &QualifiedPath) -> Option<NodePath<Product>> {
         match self.to(path)?.concretize() {
             NodePathType::Product(path) => Some(path),

@@ -116,7 +116,9 @@ impl CommandInterface for FeatureCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::interface::test_utils::{populate_with_features, populate_with_products, prepare_empty_git_repo};
+    use crate::git::interface::test_utils::{
+        populate_with_features, populate_with_products, prepare_empty_git_repo,
+    };
     use crate::git::interface::{GitInterface, GitPath};
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -138,14 +140,16 @@ mod tests {
             Box::new(FeatureCommand),
             GitPath::CustomDirectory(PathBuf::from(path.path())),
         );
-        match repo.execute(ArgSource::SUPPLIED(vec![
-            "feature", "root"
-        ])) {
+        match repo.execute(ArgSource::SUPPLIED(vec!["feature", "root"])) {
             Ok(_) => {
                 let interface = GitInterface::in_directory(path_buf);
                 check_existence(&interface).unwrap();
-                let branch_history = interface.get_commit_history(&QualifiedPath::from("main/feature/root")).unwrap();
-                let main_history = interface.get_commit_history(&QualifiedPath::from("main")).unwrap();
+                let branch_history = interface
+                    .get_commit_history(&QualifiedPath::from("main/feature/root"))
+                    .unwrap();
+                let main_history = interface
+                    .get_commit_history(&QualifiedPath::from("main"))
+                    .unwrap();
                 assert_eq!(branch_history, main_history);
             }
             Err(e) => panic!("{}", e),
@@ -169,21 +173,25 @@ mod tests {
         prepare_empty_git_repo(path_buf.clone()).unwrap();
         populate_with_features(path_buf.clone()).unwrap();
         let interface = GitInterface::in_directory(path_buf.clone());
-        interface.checkout(&QualifiedPath::from("main/feature/root/foo")).unwrap();
+        interface
+            .checkout(&QualifiedPath::from("main/feature/root/foo"))
+            .unwrap();
         interface.empty_commit("test").unwrap();
         interface.checkout(&QualifiedPath::from("main")).unwrap();
         let repo = CommandRepository::new(
             Box::new(FeatureCommand),
             GitPath::CustomDirectory(path_buf.clone()),
         );
-        match repo.execute(ArgSource::SUPPLIED(vec![
-            "feature", "root/foo/1"
-        ])) {
+        match repo.execute(ArgSource::SUPPLIED(vec!["feature", "root/foo/1"])) {
             Ok(_) => {
                 let interface = GitInterface::in_directory(path_buf);
                 check_existence(&interface).unwrap();
-                let branch_history = interface.get_commit_history(&QualifiedPath::from("main/feature/root/foo/1")).unwrap();
-                let main_history = interface.get_commit_history(&QualifiedPath::from("main")).unwrap();
+                let branch_history = interface
+                    .get_commit_history(&QualifiedPath::from("main/feature/root/foo/1"))
+                    .unwrap();
+                let main_history = interface
+                    .get_commit_history(&QualifiedPath::from("main"))
+                    .unwrap();
                 assert_eq!(branch_history, main_history);
             }
             Err(e) => panic!("{}", e),
@@ -198,14 +206,14 @@ mod tests {
         populate_with_features(path_buf.clone()).unwrap();
         populate_with_products(path_buf.clone()).unwrap();
         let interface = GitInterface::in_directory(path_buf.clone());
-        interface.checkout(&QualifiedPath::from("main/product/myprod")).unwrap();
+        interface
+            .checkout(&QualifiedPath::from("main/product/myprod"))
+            .unwrap();
         let repo = CommandRepository::new(
             Box::new(FeatureCommand),
             GitPath::CustomDirectory(path_buf.clone()),
         );
-        match repo.execute(ArgSource::SUPPLIED(vec![
-            "feature", "root/foo/1"
-        ])) {
+        match repo.execute(ArgSource::SUPPLIED(vec!["feature", "root/foo/1"])) {
             Ok(_) => panic!("Unexpected success"),
             Err(_) => assert!(true),
         }

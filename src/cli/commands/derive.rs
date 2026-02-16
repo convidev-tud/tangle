@@ -64,7 +64,10 @@ fn clique_to_paths(
 
 fn make_post_derivation_message(features: &Vec<QualifiedPath>) -> String {
     let mut base = "# DO NOT EDIT OR REMOVE THIS COMMIT\nDERIVATION FINISHED\n".to_string();
-    let strings = features.iter().map(|f| f.to_string()).collect::<Vec<String>>();
+    let strings = features
+        .iter()
+        .map(|f| f.to_string())
+        .collect::<Vec<String>>();
     base.push_str(strings.join("\n").as_str());
     base
 }
@@ -247,7 +250,9 @@ mod tests {
                     .unwrap()
                     .to_product(&QualifiedPath::from("myprod"))
                     .unwrap();
-                let commits = interface.get_commit_history(&product.get_qualified_path()).unwrap();
+                let commits = interface
+                    .get_commit_history(&product.get_qualified_path())
+                    .unwrap();
                 let derivation_commit = commits[0].clone();
                 assert_eq!(
                     derivation_commit.message(),

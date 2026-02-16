@@ -77,9 +77,8 @@ impl Add for QualifiedPath {
                 }
                 "" => {
                     if i == 0 && rhs.len() > 1 {
-                        return rhs.clone()
-                    }
-                    else if i == rhs.len() - 1 || new_path.is_empty() {
+                        return rhs.clone();
+                    } else if i == rhs.len() - 1 || new_path.is_empty() {
                         new_path.push(part.to_string())
                     }
                 }

@@ -26,9 +26,9 @@ impl TreeDataModel {
         Ok(())
     }
     pub fn get_area(&self, path: &QualifiedPath) -> Option<NodePath<Area>> {
-        Some(NodePath::<Area>::new(
-            vec![self.virtual_root.get_child(path.first()?)?.clone()],
-        ))
+        Some(NodePath::<Area>::new(vec![
+            self.virtual_root.get_child(path.first()?)?.clone(),
+        ]))
     }
     pub fn get_node_path(&self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>> {
         let initial_path = self.get_area(&path.first()?)?;

@@ -1,6 +1,7 @@
 use crate::cli::ArgHelper;
 use crate::cli::completion::CompletionHelper;
 use crate::git::interface::GitInterface;
+use crate::model::ImportFormat;
 use crate::util::u8_to_string;
 use clap::Command;
 use std::error::Error;
@@ -77,6 +78,7 @@ pub struct CommandContext<'a> {
     pub root_command: &'a CommandMap,
     pub git: &'a mut GitInterface,
     pub arg_helper: ArgHelper<'a>,
+    pub import_format: ImportFormat,
 }
 
 impl CommandContext<'_> {
@@ -85,12 +87,14 @@ impl CommandContext<'_> {
         root_command: &'a CommandMap,
         git: &'a mut GitInterface,
         arg_helper: ArgHelper<'a>,
+        import_format: ImportFormat,
     ) -> CommandContext<'a> {
         CommandContext {
             current_command,
             root_command,
             git,
             arg_helper,
+            import_format,
         }
     }
     fn transform_branch_names<S: Into<String>>(&self, to_print: S) -> String {

@@ -1,5 +1,6 @@
 use crate::cli::{ArgHelper, CommandContext, CommandImpl, CommandMap};
 use crate::git::interface::{GitInterface, GitPath};
+use crate::model::ImportFormat;
 use clap::ArgMatches;
 use std::error::Error;
 use std::ffi::OsString;
@@ -34,6 +35,7 @@ impl CommandRepository {
                         context.root_command,
                         context.git,
                         ArgHelper::new(sub_args),
+                        context.import_format.clone(),
                     ))
                 } else {
                     let ext_args: Vec<_> = sub_args.get_many::<OsString>("").unwrap().collect();
@@ -63,6 +65,7 @@ impl CommandRepository {
             &self.command_map,
             &mut GitInterface::new(self.work_path.clone()),
             ArgHelper::new(&args),
+            ImportFormat::Native,
         ))?;
         Ok(())
     }
