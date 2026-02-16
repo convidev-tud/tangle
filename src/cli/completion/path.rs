@@ -28,7 +28,7 @@ impl RelativePathCompleter {
                         let to_return = if path.len() == current_index {
                             to_index
                         } else {
-                            to_index + QualifiedPath::from("")
+                            to_index.as_dir()
                         };
                         to_return.to_string()
                     })
@@ -50,7 +50,7 @@ impl RelativePathCompleter {
     ) -> impl Iterator<Item = QualifiedPath> {
         let transformed_prefix = if prefix.last().is_some() {
             match prefix.last().unwrap().as_str() {
-                "." | ".." => prefix + QualifiedPath::from(""),
+                "." | ".." => prefix.as_dir(),
                 _ => prefix,
             }
         } else {

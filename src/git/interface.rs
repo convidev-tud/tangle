@@ -280,4 +280,15 @@ pub mod test_utils {
         }
         Ok(())
     }
+
+    pub fn populate_with_products(path: PathBuf) -> Result<(), GitError> {
+        let git = GitCLI::in_custom_directory(PathBuf::from(path));
+        let branches = vec![
+            "_main/_product/myprod",
+        ];
+        for branch in branches {
+            git.run(vec!["branch", branch])?;
+        }
+        Ok(())
+    }
 }

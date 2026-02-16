@@ -76,7 +76,10 @@ impl Add for QualifiedPath {
                     }
                 }
                 "" => {
-                    if i == rhs.len() - 1 || new_path.is_empty() {
+                    if i == 0 && rhs.len() > 1 {
+                        return rhs.clone()
+                    }
+                    else if i == rhs.len() - 1 || new_path.is_empty() {
                         new_path.push(part.to_string())
                     }
                 }
@@ -187,11 +190,13 @@ impl QualifiedPath {
     pub fn last_is(&self, suffix: &QualifiedPath) -> bool {
         self.last() == suffix.last()
     }
-    pub fn is_absolute(&self) -> bool {
-        self.path.iter().find(|e| *e == "." || *e == "..").is_none()
-    }
     pub fn len(&self) -> usize {
         self.path.len()
+    }
+    pub fn as_dir(&self) -> QualifiedPath {
+        let mut new_path = self.path.clone();
+        new_path.push("".to_string());
+        QualifiedPath::from(new_path)
     }
 }
 
@@ -229,82 +234,78 @@ mod tests {
 
     #[test]
     fn test_qualified_path_add_empty() {
-        let r = QualifiedPath::new();
-        let l = QualifiedPath::from("foo/bar");
-        assert_eq!(r + l, QualifiedPath::from("foo/bar"));
+        let l = QualifiedPath::new();
+        let r = QualifiedPath::from("foo/bar");
+        assert_eq!(l + r, QualifiedPath::from("foo/bar"));
 
-        let r = QualifiedPath::new();
-        let l = QualifiedPath::from("/foo/bar");
-        assert_eq!(r + l, QualifiedPath::from("/foo/bar"));
+        let l = QualifiedPath::new();
+        let r = QualifiedPath::from("/foo/bar");
+        assert_eq!(l + r, QualifiedPath::from("/foo/bar"));
     }
 
     #[test]
     fn test_qualified_path_add_absolute() {
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("bar/baz");
-        assert_eq!(r + l, QualifiedPath::from("foo/bar/baz"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("bar/baz");
+        assert_eq!(l + r, QualifiedPath::from("foo/bar/baz"));
 
-        let r = QualifiedPath::from("");
-        let l = QualifiedPath::from("bar/baz");
-        assert_eq!((r + l).path, vec!["", "bar", "baz"]);
+        let l = QualifiedPath::from("");
+        let r = QualifiedPath::from("bar/baz");
+        assert_eq!((l + r).path, vec!["", "bar", "baz"]);
 
-        let r = QualifiedPath::from("foo/");
-        let l = QualifiedPath::from("bar/baz");
-        assert_eq!(r + l, QualifiedPath::from("foo/bar/baz"));
-
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("/bar/baz");
-        assert_eq!((r + l).path, vec!["foo", "bar", "baz"]);
+        let l = QualifiedPath::from("foo/");
+        let r = QualifiedPath::from("bar/baz");
+        assert_eq!(l + r, QualifiedPath::from("foo/bar/baz"));
     }
 
     #[test]
     fn test_qualified_path_add_relative() {
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("..");
-        assert_eq!(r + l, QualifiedPath::new());
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("..");
+        assert_eq!(l + r, QualifiedPath::new());
 
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("./bar");
-        assert_eq!(r + l, QualifiedPath::from("foo/bar"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("./bar");
+        assert_eq!(l + r, QualifiedPath::from("foo/bar"));
 
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("./");
-        assert_eq!(r + l, QualifiedPath::from("foo/"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("./");
+        assert_eq!(l + r, QualifiedPath::from("foo/"));
 
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("../bar");
-        assert_eq!(r + l, QualifiedPath::from("bar"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("../bar");
+        assert_eq!(l + r, QualifiedPath::from("bar"));
 
-        let r = QualifiedPath::from("foo/bar");
-        let l = QualifiedPath::from("../baz");
-        assert_eq!(r + l, QualifiedPath::from("foo/baz"));
+        let l = QualifiedPath::from("foo/bar");
+        let r = QualifiedPath::from("../baz");
+        assert_eq!(l + r, QualifiedPath::from("foo/baz"));
 
-        let r = QualifiedPath::from("foo/bar");
-        let l = QualifiedPath::from("../../baz");
-        assert_eq!(r + l, QualifiedPath::from("baz"));
+        let l = QualifiedPath::from("foo/bar");
+        let r = QualifiedPath::from("../../baz");
+        assert_eq!(l + r, QualifiedPath::from("baz"));
 
-        let r = QualifiedPath::from("foo/bar");
-        let l = QualifiedPath::from("../../../../../../baz");
-        assert_eq!(r + l, QualifiedPath::from("baz"));
+        let l = QualifiedPath::from("foo/bar");
+        let r = QualifiedPath::from("../../../../../../baz");
+        assert_eq!(l + r, QualifiedPath::from("baz"));
 
-        let r = QualifiedPath::from("foo/bar");
-        let l = QualifiedPath::from("baz/../baz/../baz/../baz");
-        assert_eq!(r + l, QualifiedPath::from("foo/bar/baz"));
+        let l = QualifiedPath::from("foo/bar");
+        let r = QualifiedPath::from("baz/../baz/../baz/../baz");
+        assert_eq!(l + r, QualifiedPath::from("foo/bar/baz"));
 
-        let r = QualifiedPath::from("foo/bar");
-        let l = QualifiedPath::from("../baz/../baz/../baz");
-        assert_eq!(r + l, QualifiedPath::from("foo/baz"));
+        let l = QualifiedPath::from("foo/bar");
+        let r = QualifiedPath::from("../baz/../baz/../baz");
+        assert_eq!(l + r, QualifiedPath::from("foo/baz"));
     }
 
     #[test]
     fn test_qualified_path_add_whitespaces() {
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("");
-        assert_eq!(r + l, QualifiedPath::from("foo/"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("");
+        assert_eq!(l + r, QualifiedPath::from("foo/"));
 
-        let r = QualifiedPath::from("foo");
-        let l = QualifiedPath::from("/bar/baz");
-        assert_eq!(r + l, QualifiedPath::from("/bar/baz"));
+        let l = QualifiedPath::from("foo");
+        let r = QualifiedPath::from("/bar/baz");
+        assert_eq!(l + r, QualifiedPath::from("/bar/baz"));
     }
 
     #[test]
