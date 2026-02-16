@@ -15,7 +15,7 @@ pub struct GitDirPersistencyHandler {
 
 impl GitDirPersistencyHandler {
     pub fn new(file_name: &str) -> Self {
-        let path = String::from("hypergit/") + file_name;
+        let path = String::from("tangl/") + file_name;
         Self {
             file_path: path,
             raw_git_interface: GitCLI::in_current_directory(),
