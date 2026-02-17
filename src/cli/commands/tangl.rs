@@ -1,8 +1,8 @@
-use std::error::Error;
-use crate::cli::*;
-use clap::{Arg, Command};
 use crate::cli::completion::CompletionHelper;
+use crate::cli::*;
 use crate::model::ImportFormat;
+use clap::{Arg, Command};
+use std::error::Error;
 
 #[derive(Clone, Debug)]
 pub struct TangleCommand {}
@@ -17,7 +17,7 @@ impl CommandDefinition for TangleCommand {
                     .short('f')
                     .long("import-format")
                     .default_value("native")
-                    .help("Specify file import format for all commands")
+                    .help("Specify file import format for all commands"),
             )
     }
     fn get_subcommands(&self) -> Vec<Box<dyn CommandImpl>> {
@@ -40,26 +40,29 @@ impl CommandDefinition for TangleCommand {
 
 impl CommandInterface for TangleCommand {
     fn run_command(&self, context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
-        let format = context.arg_helper.get_argument_value::<String>("format").unwrap();
+        let format = context
+            .arg_helper
+            .get_argument_value::<String>("format")
+            .unwrap();
         context.import_format = ImportFormat::from(format);
         Ok(())
     }
 
-    fn shell_complete(&self, completion_helper: CompletionHelper, _context: &mut CommandContext) -> Result<Vec<String>, Box<dyn Error>> {
+    fn shell_complete(
+        &self,
+        completion_helper: CompletionHelper,
+        _context: &mut CommandContext,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
         match completion_helper.currently_editing() {
-            Some(value) => {
-                match value.get_id().as_str() {
-                    "format" => {
-                        Ok(vec![
-                            "native".to_string(),
-                            "waffle".to_string(),
-                            "uvl".to_string(),
-                        ])
-                    }
-                    _ => Ok(vec![])
-                }
-            }
-            None => { Ok(vec![]) }
+            Some(value) => match value.get_id().as_str() {
+                "format" => Ok(vec![
+                    "native".to_string(),
+                    "waffle".to_string(),
+                    "uvl".to_string(),
+                ]),
+                _ => Ok(vec![]),
+            },
+            None => Ok(vec![]),
         }
     }
 }

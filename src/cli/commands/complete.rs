@@ -1,7 +1,24 @@
 use crate::cli::completion::CompletionHelper;
 use crate::cli::*;
-use clap::{Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::error::Error;
+
+fn get_last_index(command: &Command, matches: &ArgMatches, max: usize) -> usize {
+    let mut max_index = 0;
+    for arg in command.get_arguments() {
+        for i in matches.indices_of(arg.get_id().as_str()) {
+            let max = i.collect::<Vec<usize>>().iter().max();
+            if &max_index > max.unwrap() {
+                max_index = max.unwrap().clone();
+            }
+        }
+    }
+    match matches.subcommand() {
+        Some((name, sub_matches)) => {
+        },
+        None => { max_index }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct HiddenCompletionCommand;
@@ -25,12 +42,34 @@ impl CommandInterface for HiddenCompletionCommand {
         if to_complete.is_empty() {
             return Ok(());
         }
-        let maybe_last_child = context
+        let matches = context
             .root_command
-            .find_last_child_recursive(&mut to_complete.clone());
+            .clap_command
+            .clone()
+            .ignore_errors(true)
+            .get_matches_from(to_complete.clone());
+        let maybe_last_child = context.root_command.find_current_child(&matches);
+        println!("{:?}", matches);
         let last_item = <&str>::clone(to_complete.last().unwrap());
         match maybe_last_child {
             Some(last_child) => {
+                let completion = last_child
+                    .command
+                    .shell_complete(
+                        CompletionHelper::new(&last_child.clap_command, to_complete[1..].to_vec()),
+                        context,
+                    )?
+                    .iter()
+                    .filter(|c| c.starts_with(last_item))
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>();
+                match completion.len() {
+                    0 => {}
+                    _ => {
+                        context.log_to_stdout(completion.join(" "));
+                        return Ok(());
+                    }
+                }
                 let mut subcommands = last_child
                     .find_children_by_prefix(last_item)
                     .iter()
@@ -75,14 +114,6 @@ impl CommandInterface for HiddenCompletionCommand {
                             }
                         }
                     }
-                }
-                let completion = last_child.command.shell_complete(
-                    CompletionHelper::new(&last_child.clap_command, to_complete[1..].to_vec()),
-                    context,
-                )?;
-                match completion.len() {
-                    0 => {}
-                    _ => context.log_to_stdout(completion.join(" ")),
                 }
             }
             None => {}

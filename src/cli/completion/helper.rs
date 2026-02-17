@@ -7,23 +7,16 @@ use std::ops::Range;
 #[derive(Debug, Clone)]
 pub struct CompletionHelper<'a> {
     command: &'a Command,
-    appendix: Vec<&'a str>,
+    cli_content: Vec<&'a str>,
 }
 impl<'a> CompletionHelper<'a> {
     pub fn new(command: &'a Command, appendix: Vec<&'a str>) -> Self {
-        Self { command, appendix }
+        Self { command, cli_content: appendix }
     }
     pub fn get_last(&self) -> Option<String> {
-        Some(self.appendix.last()?.to_string())
+        Some(self.cli_content.last()?.to_string())
     }
-    /// Returns if the passed target is the currently one edited on the console.
-    ///
-    /// Examples:
-    /// ```bash
-    /// mytool foo // foo is edited
-    /// mytool foo bar // foo is edited, if curser remains on bar
-    /// mytool foo bar abc // foo is not edited
-    /// ```
+
     fn currently_editing_with_range(&self) -> Option<(Range<usize>, &Arg)> {
         let mut current_option: Option<&Arg> = None;
         let mut current_option_start: usize = 0;
@@ -61,7 +54,7 @@ impl<'a> CompletionHelper<'a> {
         }
         // match appendix index to argument
         let cmd_to_index: HashMap<usize, &Arg> = self
-            .appendix
+            .cli_content
             .iter()
             .enumerate()
             .filter_map(|(index, element)| {
@@ -116,8 +109,8 @@ impl<'a> CompletionHelper<'a> {
             })
             .collect();
 
-        let current_cmd = cmd_to_index.get(&(self.appendix.len() - 1))?;
-        let end: usize = self.appendix.len() - 1;
+        let current_cmd = cmd_to_index.get(&(self.cli_content.len() - 1))?;
+        let end: usize = self.cli_content.len() - 1;
         let mut start: usize = end;
         for (i, arg) in cmd_to_index.iter() {
             if arg == current_cmd && i < &start {
@@ -138,15 +131,15 @@ impl<'a> CompletionHelper<'a> {
         Some(self.currently_editing_with_range()?.1)
     }
     pub fn get_appendix_of_currently_edited(&self) -> Vec<&str> {
-        if self.appendix.len() < 3 {
+        if self.cli_content.len() < 3 {
             return vec![];
         }
         let maybe_currently_editing = self.currently_editing_with_range();
         if maybe_currently_editing.is_none() {
-            return self.appendix[1..self.appendix.len() - 1].to_vec();
+            return self.cli_content[1..self.cli_content.len() - 1].to_vec();
         }
         let currently_editing = maybe_currently_editing.unwrap().0;
-        self.appendix[currently_editing.start..self.appendix.len() - 1].to_vec()
+        self.cli_content[currently_editing.start..self.cli_content.len() - 1].to_vec()
     }
     pub fn complete_qualified_paths(
         &self,
@@ -260,7 +253,7 @@ mod tests {
         );
     }
     #[test]
-    fn test_currently_boolean() {
+    fn test_currently_editing_boolean() {
         let cmd = setup_test_command();
         let appendix = vec!["mytool", "-b", ""];
         let helper = CompletionHelper::new(&cmd, appendix);

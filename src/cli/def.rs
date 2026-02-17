@@ -3,7 +3,7 @@ use crate::cli::completion::CompletionHelper;
 use crate::git::interface::GitInterface;
 use crate::model::ImportFormat;
 use crate::util::u8_to_string;
-use clap::Command;
+use clap::{ArgMatches, Command};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::process::Output;
@@ -40,28 +40,22 @@ impl CommandMap {
             .iter()
             .find(|child| child.clap_command.get_name() == name)
     }
-    pub fn find_last_child_recursive(&self, names: &mut Vec<&str>) -> Option<&CommandMap> {
-        if names.is_empty() {
-            return None;
-        }
-        if names.len() >= 1 && self.clap_command.get_name() == *names.first().unwrap() {
-            if names.len() == 1 {
-                return Some(self);
-            }
-            names.remove(0);
-            let maybe_child = self.find_child(names.first().unwrap());
-            if maybe_child.is_some() {
-                let maybe_final = maybe_child.unwrap().find_last_child_recursive(names);
-                if maybe_final.is_some() {
-                    maybe_final
+    pub fn find_current_child(&self, matches: &ArgMatches) -> Option<&CommandMap> {
+        match matches.subcommand() {
+            Some((name, sub_matches)) => {
+                let maybe_child = self.find_child(name);
+                if maybe_child.is_some() {
+                    let child_result = maybe_child.unwrap().find_current_child(sub_matches);
+                    if child_result.is_some() {
+                        child_result
+                    } else {
+                        Some(self)
+                    }
                 } else {
                     Some(self)
                 }
-            } else {
-                Some(self)
             }
-        } else {
-            None
+            _ => Some(self),
         }
     }
     pub fn find_children_by_prefix(&self, prefix: &str) -> Vec<&CommandMap> {
