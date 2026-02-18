@@ -1,10 +1,10 @@
 use crate::cli::ArgHelper;
 use crate::cli::completion::RelativePathCompleter;
 use crate::model::QualifiedPath;
+use clap::parser::ValueSource;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::any::Any;
 use std::ops::Range;
-use clap::parser::ValueSource;
 
 #[derive(Debug, Clone)]
 pub struct CompletionHelper<'a> {
@@ -14,7 +14,6 @@ pub struct CompletionHelper<'a> {
 }
 impl<'a> CompletionHelper<'a> {
     pub fn new(root_command: &'a Command, cli_content: Vec<&'a str>) -> Self {
-        println!("{:?}", cli_content);
         let arg_matches = root_command
             .clone()
             .ignore_errors(true)
@@ -24,13 +23,13 @@ impl<'a> CompletionHelper<'a> {
         loop {
             match matches.subcommand() {
                 Some((name, arg_matches)) => {
-                    let maybe_command = command
-                        .get_subcommands()
-                        .find(|c| c.get_name() == name);
+                    let maybe_command = command.get_subcommands().find(|c| c.get_name() == name);
                     if maybe_command.is_some() {
                         command = maybe_command.unwrap();
                         matches = arg_matches;
-                    } else { break; }
+                    } else {
+                        break;
+                    }
                 }
                 None => break,
             }
@@ -46,14 +45,15 @@ impl<'a> CompletionHelper<'a> {
     }
 
     fn currently_editing_with_range(&self) -> Option<(Option<Range<usize>>, &Arg)> {
-        // this is an ugly method and needs some cleanup in the future
         let all_parsed_args = self
             .arg_matches
             .ids()
-            .filter(|arg| { match self.arg_matches.value_source(arg.as_str()).unwrap() {
-                ValueSource::CommandLine => true,
-                _ => false,
-            } })
+            .filter(
+                |arg| match self.arg_matches.value_source(arg.as_str()).unwrap() {
+                    ValueSource::CommandLine => true,
+                    _ => false,
+                },
+            )
             .collect::<Vec<_>>();
 
         let maybe_last = all_parsed_args.last();
@@ -80,7 +80,11 @@ impl<'a> CompletionHelper<'a> {
             0 => Some((None, last_parsed_arg)),
             _ => match last_parsed_arg.get_action() {
                 ArgAction::Set => {
-                    if indices_of_last_parsed_arg.len() == 1 {
+                    if &ArgHelper::new(&self.arg_matches)
+                        .get_argument_value::<String>(last_parsed_arg.get_id().as_str())
+                        .unwrap()
+                        == self.cli_content.last().unwrap()
+                    {
                         Some((
                             Some(Range {
                                 start: indices_of_last_parsed_arg.first().unwrap().to_owned(),
@@ -88,8 +92,7 @@ impl<'a> CompletionHelper<'a> {
                             }),
                             last_parsed_arg,
                         ))
-                    }
-                    else if next_positional.is_some() {
+                    } else if next_positional.is_some() {
                         Some((None, next_positional?))
                     } else {
                         None
@@ -155,8 +158,7 @@ impl<'a> CompletionHelper<'a> {
         let mut currently_editing_appendix = self.get_appendix_of_currently_edited();
         currently_editing_appendix.pop();
         paths.filter_map(move |path| {
-            if currently_editing_appendix
-                .contains(&path.strip_n_left(reference.len()).to_string())
+            if currently_editing_appendix.contains(&path.strip_n_left(reference.len()).to_string())
             {
                 None
             } else {
@@ -171,6 +173,7 @@ mod tests {
     use super::*;
 
     fn setup_test_command() -> Command {
+        let sub_command = Command::new("sub").arg(Arg::new("sub_option").short('s'));
         Command::new("mytool")
             .arg(Arg::new("option1").long("option1").short('a'))
             .arg(
@@ -181,6 +184,7 @@ mod tests {
             )
             .arg(Arg::new("pos1"))
             .arg(Arg::new("pos2").action(ArgAction::Append))
+            .subcommand(sub_command)
     }
     fn setup_qualified_paths() -> Vec<QualifiedPath> {
         vec![
@@ -270,6 +274,16 @@ mod tests {
         );
     }
     #[test]
+    fn test_currently_editing_subcommands() {
+        let cmd = setup_test_command();
+        let appendix = vec!["mytool", "-b", "sub", "-s", "abc"];
+        let helper = CompletionHelper::new(&cmd, appendix);
+        assert_eq!(
+            helper.currently_editing().unwrap().get_id().as_str(),
+            "sub_option".to_string()
+        );
+    }
+    #[test]
     fn test_complete_qualified_path_stepwise_ignore_prior_occurrences() {
         let cmd = setup_test_command();
         let appendix = vec!["mytool", "abc", "foo/bar/baz1", "foo/b"];
@@ -285,7 +299,10 @@ mod tests {
         let cmd = setup_test_command();
         let appendix = vec!["mytool", "foo", "a", "b", "c"];
         let helper = CompletionHelper::new(&cmd, appendix);
-        assert_eq!(helper.get_appendix_of_currently_edited(), vec!["a", "b", "c"])
+        assert_eq!(
+            helper.get_appendix_of_currently_edited(),
+            vec!["a", "b", "c"]
+        )
     }
     #[test]
     fn test_complete_qualified_path_stepwise_do_not_ignore_current_occurrences() {
