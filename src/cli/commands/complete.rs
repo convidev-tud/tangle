@@ -1,24 +1,7 @@
 use crate::cli::completion::CompletionHelper;
 use crate::cli::*;
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{Arg, ArgAction, Command};
 use std::error::Error;
-
-fn get_last_index(command: &Command, matches: &ArgMatches, max: usize) -> usize {
-    let mut max_index = 0;
-    for arg in command.get_arguments() {
-        for i in matches.indices_of(arg.get_id().as_str()) {
-            let max = i.collect::<Vec<usize>>().iter().max();
-            if &max_index > max.unwrap() {
-                max_index = max.unwrap().clone();
-            }
-        }
-    }
-    match matches.subcommand() {
-        Some((name, sub_matches)) => {
-        },
-        None => { max_index }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct HiddenCompletionCommand;
@@ -49,14 +32,13 @@ impl CommandInterface for HiddenCompletionCommand {
             .ignore_errors(true)
             .get_matches_from(to_complete.clone());
         let maybe_last_child = context.root_command.find_current_child(&matches);
-        println!("{:?}", matches);
         let last_item = <&str>::clone(to_complete.last().unwrap());
         match maybe_last_child {
             Some(last_child) => {
                 let completion = last_child
                     .command
                     .shell_complete(
-                        CompletionHelper::new(&last_child.clap_command, to_complete[1..].to_vec()),
+                        CompletionHelper::new(&context.root_command.clap_command, to_complete),
                         context,
                     )?
                     .iter()
