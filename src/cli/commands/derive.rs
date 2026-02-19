@@ -124,7 +124,7 @@ impl CommandInterface for DeriveCommand {
         context.info("Checking for conflicts");
         let (id_to_path, path_to_id) = map_paths_to_id(&all_features);
         let conflicts: ConflictStatistics = ConflictChecker::new(&context.git)
-            .check(&all_features)?
+            .check_all(&all_features)?
             .collect();
         if conflicts.n_errors() > 0 {
             return Err("Errors occurred while checking for conflicts.".into());
@@ -144,9 +144,8 @@ impl CommandInterface for DeriveCommand {
                 .git
                 .empty_commit(make_post_derivation_message(&all_features).as_str())?;
             context.git.checkout(&current_path)?;
-            context.info(
-                "Derivation finished ".to_string() + make_no_conflict_log().as_str() + ".",
-            );
+            context
+                .info("Derivation finished ".to_string() + make_no_conflict_log().as_str() + ".");
         } else {
             context.info(
                 format!("Can merge {} features ", mergeable_features.len())
@@ -160,9 +159,7 @@ impl CommandInterface for DeriveCommand {
                 ) + make_conflict_log().as_str()
                     + ".",
             );
-            context.info(
-                "A partial derivation will be performed with all conflict-free features.",
-            )
+            context.info("A partial derivation will be performed with all conflict-free features.")
         }
         Ok(())
     }

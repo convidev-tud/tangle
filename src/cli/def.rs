@@ -4,10 +4,10 @@ use crate::git::interface::GitInterface;
 use crate::model::ImportFormat;
 use crate::util::u8_to_string;
 use clap::{ArgMatches, Command};
+use log::{LevelFilter, debug, error, info, trace, warn};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::process::Output;
-use log::{debug, error, info, trace, warn, LevelFilter};
 
 #[derive(Debug)]
 pub struct CommandMap {
@@ -109,7 +109,7 @@ impl CommandContext<'_> {
                 LevelFilter::Info => info!("{}", to_send),
                 LevelFilter::Debug => debug!("{}", to_send),
                 LevelFilter::Trace => trace!("{}", to_send),
-                LevelFilter::Off => {},
+                LevelFilter::Off => {}
             }
         }
     }

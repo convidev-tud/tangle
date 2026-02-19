@@ -11,25 +11,30 @@ pub enum ConflictStatistic {
     ERROR((QualifiedPath, QualifiedPath), GitError),
 }
 
-impl From<ConflictStatistic> for String {
-    fn from(value: ConflictStatistic) -> Self {
-        match value {
-            ConflictStatistic::OK((l, r)) => {
-                format!("Merge {} and {} ", l, r) + "OK".green().to_string().as_str()
-            }
-            ConflictStatistic::CONFLICT((l, r)) => {
-                format!("Merge {} and {} ", l, r) + "CONFLICT".red().to_string().as_str()
-            }
-            ConflictStatistic::ERROR((l, r), error) => {
-                format!("Merge {} and {} ", l, r) + "ERROR".green().to_string().as_str()
-            }
-        }
-    }
-}
-
 impl Display for ConflictStatistic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.to_string().as_str())
+        let formatted = match self {
+            ConflictStatistic::OK((l, r)) => {
+                format!("{} and {} ", l, r) + "OK".green().to_string().as_str()
+            }
+            ConflictStatistic::CONFLICT((l, r)) => {
+                format!("{} and {} ", l, r) + "CONFLICT".red().to_string().as_str()
+            }
+            ConflictStatistic::ERROR((l, r), _) => {
+                format!("{} and {} ", l, r) + "ERROR".green().to_string().as_str()
+            }
+        };
+        f.write_str(formatted.as_str())
+    }
+}
+impl Into<String> for ConflictStatistic {
+    fn into(self) -> String {
+        self.to_string()
+    }
+}
+impl Into<String> for &ConflictStatistic {
+    fn into(self) -> String {
+        self.to_string()
     }
 }
 
@@ -47,7 +52,7 @@ impl ConflictStatistics {
             error: vec![],
         }
     }
-    pub fn from<T: Iterator<Item = ConflictStatistic>>(statistics: T) -> Self {
+    pub fn from_iter<T: Iterator<Item = ConflictStatistic>>(statistics: T) -> Self {
         let mut new = Self::new();
         for statistic in statistics {
             new.push(statistic);
@@ -64,6 +69,12 @@ impl ConflictStatistics {
     pub fn iter_ok(&self) -> impl Iterator<Item = &ConflictStatistic> {
         self.ok.iter()
     }
+    pub fn iter_conflicts(&self) -> impl Iterator<Item = &ConflictStatistic> {
+        self.conflict.iter()
+    }
+    pub fn iter_error(&self) -> impl Iterator<Item = &ConflictStatistic> {
+        self.error.iter()
+    }
     pub fn n_ok(&self) -> usize {
         self.ok.len()
     }
@@ -77,7 +88,7 @@ impl ConflictStatistics {
 
 impl FromIterator<ConflictStatistic> for ConflictStatistics {
     fn from_iter<T: IntoIterator<Item = ConflictStatistic>>(iter: T) -> Self {
-        Self::from(iter.into_iter())
+        Self::from_iter(iter.into_iter())
     }
 }
 
@@ -90,7 +101,7 @@ impl<'a> ConflictChecker<'a> {
         Self { interface }
     }
 
-    pub fn check(
+    pub fn check_all(
         &self,
         paths: &Vec<QualifiedPath>,
     ) -> Result<impl Iterator<Item = ConflictStatistic>, GitError> {
@@ -102,19 +113,25 @@ impl<'a> ConflictChecker<'a> {
         }
 
         let iterator = feature_combinations.into_iter().map(|(l, r)| {
-            let statistic = self.check_two(l.clone(), r.clone());
-            match statistic {
-                Ok(stat) => match stat {
-                    true => ConflictStatistic::OK((l.clone(), r.clone())),
-                    false => ConflictStatistic::CONFLICT((l.clone(), r.clone())),
-                },
-                Err(e) => ConflictStatistic::ERROR((l.clone(), r.clone()), e),
-            }
+            let statistic = self.check_two(l, r);
+            self.build_statistic(l.clone(), r.clone(), statistic)
         });
         Ok(iterator)
     }
 
-    fn check_two(&self, l: QualifiedPath, r: QualifiedPath) -> Result<bool, GitError> {
+    pub fn check_1_to_n(
+        &self,
+        source: &QualifiedPath,
+        targets: &Vec<QualifiedPath>,
+    ) -> Result<impl Iterator<Item = ConflictStatistic>, GitError> {
+        let iterator = targets.into_iter().map(move |target| {
+            let statistic = self.check_two(source, target);
+            self.build_statistic(source.clone(), target.clone(), statistic)
+        });
+        Ok(iterator)
+    }
+
+    fn check_two(&self, l: &QualifiedPath, r: &QualifiedPath) -> Result<bool, GitError> {
         let current_path = self.interface.get_current_qualified_path()?;
         let current_area = self.interface.get_current_area()?;
         self.interface
@@ -122,12 +139,31 @@ impl<'a> ConflictChecker<'a> {
         let temporary = QualifiedPath::from("tmp");
         self.interface.create_branch_no_mut(&temporary)?;
         self.interface.checkout_raw(&temporary)?;
-        let success = self.interface.merge(&vec![l, r])?.status.success();
+        let success = self
+            .interface
+            .merge(&vec![l.clone(), r.clone()])?
+            .status
+            .success();
         if !success {
             self.interface.abort_merge()?;
         }
         self.interface.checkout(&current_path)?;
         self.interface.delete_branch(&temporary)?;
         Ok(success)
+    }
+
+    fn build_statistic(
+        &self,
+        l: QualifiedPath,
+        r: QualifiedPath,
+        result: Result<bool, GitError>,
+    ) -> ConflictStatistic {
+        match result {
+            Ok(stat) => match stat {
+                true => ConflictStatistic::OK((l, r)),
+                false => ConflictStatistic::CONFLICT((l, r)),
+            },
+            Err(e) => ConflictStatistic::ERROR((l, r), e),
+        }
     }
 }

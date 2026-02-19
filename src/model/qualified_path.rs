@@ -16,6 +16,11 @@ impl From<String> for QualifiedPath {
         qualified_path
     }
 }
+impl From<&String> for QualifiedPath {
+    fn from(value: &String) -> Self {
+        Self::from(value.to_string())
+    }
+}
 impl From<&str> for QualifiedPath {
     fn from(value: &str) -> Self {
         Self::from(value.to_string())
@@ -28,6 +33,11 @@ impl From<Vec<String>> for QualifiedPath {
             path.push(v);
         }
         path
+    }
+}
+impl From<QualifiedPath> for String {
+    fn from(value: QualifiedPath) -> Self {
+        value.to_string()
     }
 }
 impl PartialEq for QualifiedPath {
@@ -94,11 +104,6 @@ impl Add for QualifiedPath {
 impl Display for QualifiedPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.to_string().blue().to_string().as_str())
-    }
-}
-impl From<QualifiedPath> for String {
-    fn from(value: QualifiedPath) -> Self {
-        value.to_string()
     }
 }
 impl QualifiedPath {

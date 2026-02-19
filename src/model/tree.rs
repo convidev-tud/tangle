@@ -27,7 +27,9 @@ impl TreeDataModel {
     }
     pub fn get_area(&self, path: &QualifiedPath) -> Option<NodePath<Area>> {
         Some(NodePath::<Area>::new(vec![
-            self.virtual_root.get_child(path.first()?)?.clone(),
+            self.virtual_root
+                .get_child(path.first()?.to_string())?
+                .clone(),
         ]))
     }
     pub fn get_node_path(&self, path: &QualifiedPath) -> Option<NodePath<AnyNodeType>> {

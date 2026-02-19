@@ -7,19 +7,14 @@ pub enum ImportFormat {
     UVL,
 }
 
-impl From<String> for ImportFormat {
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl From<&str> for ImportFormat {
-    fn from(value: &str) -> Self {
-        match value.to_uppercase().as_str() {
+impl<S: Into<String>> From<S> for ImportFormat {
+    fn from(value: S) -> Self {
+        let real = value.into();
+        match real.to_uppercase().as_str() {
             "NATIVE" => ImportFormat::Native,
             "WAFFLE" => ImportFormat::Waffle,
             "UVL" => ImportFormat::UVL,
-            _ => unreachable!("Importer does not support format '{}'", value),
+            _ => unreachable!("Importer does not support format '{}'", real),
         }
     }
 }
