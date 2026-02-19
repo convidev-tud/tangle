@@ -16,6 +16,7 @@ impl CommandDefinition for CheckCommand {
         Command::new("check")
             .about("Check all features for merge conflicts")
             .disable_help_subcommand(true)
+            .arg(verbose())
     }
 }
 
@@ -29,10 +30,10 @@ impl CommandInterface for CheckCommand {
                 .map(|child| child.get_qualified_path())
                 .collect();
             for statistic in ConflictChecker::new(&context.git).check(&all_features)? {
-                context.log_to_stdout(statistic);
+                context.debug(statistic);
             }
         } else {
-            context.log_to_stdout(no_features());
+            context.info(no_features());
         }
         Ok(())
     }

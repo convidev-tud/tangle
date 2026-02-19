@@ -1,13 +1,24 @@
 use clap::{Arg, ArgAction};
 
-pub fn make_show_tags() -> Arg {
+pub fn show_tags() -> Arg {
     Arg::new("show_tags")
         .long("show-tags")
         .action(ArgAction::SetTrue)
         .help("Also show tags")
 }
 
-pub fn make_delete(force: bool) -> Arg {
+pub fn delete(force: bool) -> Arg {
     let short = if force { 'D' } else { 'd' };
     Arg::new("delete").short(short)
+}
+
+pub fn verbose() -> Arg {
+    Arg::new("verbosity")
+        .short('v')
+        .long("verbose")
+        .action(ArgAction::Count)
+        .help(
+            "Set verbosity of output. \
+            Verbosity increases with number of occurrences."
+        )
 }

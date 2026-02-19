@@ -55,7 +55,7 @@ impl CommandInterface for UntieCommand {
             .git
             .get_commit_history(&current.get_qualified_path())?;
         if commit_history.is_empty() {
-            context.log_to_stdout("No commits on product");
+            context.info("No commits on product");
             return Ok(());
         }
         let hash: String = match maybe_commit {
@@ -112,9 +112,9 @@ impl CommandInterface for UntieCommand {
         let output = context.git.cherry_pick(&hash)?;
         if !output.status.success() {
             context.git.abort_merge()?;
-            context.log_to_stdout(format!("Unable to untie commit {}", &hash));
+            context.info(format!("Unable to untie commit {}", &hash));
         } else {
-            context.log_to_stdout(format!("Untied commit {} to {}", &hash, &feature));
+            context.info(format!("Untied commit {} to {}", &hash, &feature));
         }
         context.git.checkout(&current_path)?;
         Ok(())

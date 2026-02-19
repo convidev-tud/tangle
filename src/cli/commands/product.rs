@@ -15,7 +15,7 @@ fn print_product_tree(context: &CommandContext) -> Result<(), Box<dyn Error>> {
     let area = context.git.get_current_area()?;
     match area.to_product_root() {
         Some(path) => {
-            context.log_to_stdout(path.display_tree(false));
+            context.info(path.display_tree(false));
         }
         None => {}
     }

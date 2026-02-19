@@ -24,14 +24,14 @@ impl CommandInterface for SpreadCommand {
             match path.concretize() {
                 NodePathType::Tag(_) => {}
                 _ => {
-                    context.log_to_stdout(format!("Spreading to {}", qualified_path));
+                    context.info(format!("Spreading to {}", qualified_path));
                     context.git.checkout(&qualified_path)?;
                     context.git.merge(&merge_argument)?;
                 }
             }
         }
         context.git.checkout(&current_branch)?;
-        context.log_to_stdout("Success");
+        context.info("Success");
         Ok(())
     }
 }

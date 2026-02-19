@@ -10,7 +10,7 @@ impl CommandDefinition for TreeCommand {
         Command::new("tree")
             .about("Displays the tree structure")
             .disable_help_subcommand(true)
-            .arg(make_show_tags())
+            .arg(show_tags())
     }
 }
 
@@ -22,7 +22,7 @@ impl CommandInterface for TreeCommand {
             .unwrap();
         let current_node_path = context.git.get_current_node_path()?;
         let tree = current_node_path.display_tree(show_tags);
-        context.log_to_stdout(tree);
+        context.info(tree);
         Ok(())
     }
 }

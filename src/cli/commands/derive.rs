@@ -121,7 +121,7 @@ impl CommandInterface for DeriveCommand {
             .map(|e| current_area.get_path_to_feature_root() + QualifiedPath::from(e))
             .collect::<Vec<_>>();
 
-        context.log_to_stdout("Checking for conflicts");
+        context.info("Checking for conflicts");
         let (id_to_path, path_to_id) = map_paths_to_id(&all_features);
         let conflicts: ConflictStatistics = ConflictChecker::new(&context.git)
             .check(&all_features)?
@@ -144,23 +144,23 @@ impl CommandInterface for DeriveCommand {
                 .git
                 .empty_commit(make_post_derivation_message(&all_features).as_str())?;
             context.git.checkout(&current_path)?;
-            context.log_to_stdout(
+            context.info(
                 "Derivation finished ".to_string() + make_no_conflict_log().as_str() + ".",
             );
         } else {
-            context.log_to_stdout(
+            context.info(
                 format!("Can merge {} features ", mergeable_features.len())
                     + make_no_conflict_log().as_str()
                     + ".",
             );
-            context.log_to_stdout(
+            context.info(
                 format!(
                     "{} features ",
                     all_features.len() - mergeable_features.len()
                 ) + make_conflict_log().as_str()
                     + ".",
             );
-            context.log_to_stdout(
+            context.info(
                 "A partial derivation will be performed with all conflict-free features.",
             )
         }

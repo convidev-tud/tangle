@@ -48,7 +48,7 @@ impl CommandInterface for HiddenCompletionCommand {
                 match completion.len() {
                     0 => {}
                     _ => {
-                        context.log_to_stdout(completion.join(" "));
+                        println!("{}", completion.join(" "));
                         return Ok(());
                     }
                 }
@@ -64,7 +64,7 @@ impl CommandInterface for HiddenCompletionCommand {
                 }
                 for subcommand in subcommands {
                     if subcommand != "__completion" {
-                        context.log_to_stdout(subcommand)
+                        println!("{}", subcommand)
                     }
                 }
                 if last_item.starts_with("-") {
@@ -83,7 +83,7 @@ impl CommandInterface for HiddenCompletionCommand {
                                 let mut s = "-".to_string();
                                 s.push_str(short.unwrap().to_string().as_str());
                                 if s.starts_with(last_item) {
-                                    context.log_to_stdout(s)
+                                    println!("{}", s)
                                 }
                             }
                         }
@@ -92,7 +92,7 @@ impl CommandInterface for HiddenCompletionCommand {
                             let mut s = "--".to_string();
                             s.push_str(long.unwrap());
                             if s.starts_with(last_item) {
-                                context.log_to_stdout(s)
+                                println!("{}", s)
                             }
                         }
                     }

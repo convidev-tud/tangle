@@ -7,6 +7,7 @@ use clap::{ArgMatches, Command};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::process::Output;
+use log::{debug, error, info, trace, warn, LevelFilter};
 
 #[derive(Debug)]
 pub struct CommandMap {
@@ -98,21 +99,38 @@ impl CommandContext<'_> {
         }
         result
     }
+    fn log<S: Into<String>>(&self, message: S, level: LevelFilter) {
+        let converted = message.into();
+        if converted.len() > 0 {
+            let to_send = self.transform_branch_names(converted.trim_end());
+            match level {
+                LevelFilter::Error => error!("{}", to_send),
+                LevelFilter::Warn => warn!("{}", to_send),
+                LevelFilter::Info => info!("{}", to_send),
+                LevelFilter::Debug => debug!("{}", to_send),
+                LevelFilter::Trace => trace!("{}", to_send),
+                LevelFilter::Off => {},
+            }
+        }
+    }
     pub fn log_from_output(&self, output: &Output) {
-        self.log_to_stdout(u8_to_string(&output.stdout));
-        self.log_to_stderr(u8_to_string(&output.stderr));
+        self.info(u8_to_string(&output.stdout));
+        self.error(u8_to_string(&output.stderr));
     }
-    pub fn log_to_stdout<S: Into<String>>(&self, stdout: S) {
-        let converted = stdout.into();
-        if converted.len() > 0 {
-            println!("{}", self.transform_branch_names(converted.trim_end()))
-        }
+    pub fn trace<S: Into<String>>(&self, message: S) {
+        self.log(message, LevelFilter::Trace)
     }
-    pub fn log_to_stderr<S: Into<String>>(&self, stderr: S) {
-        let converted = stderr.into();
-        if converted.len() > 0 {
-            println!("{}", self.transform_branch_names(converted.trim_end()))
-        }
+    pub fn debug<S: Into<String>>(&self, message: S) {
+        self.log(message, LevelFilter::Debug)
+    }
+    pub fn info<S: Into<String>>(&self, message: S) {
+        self.log(message, LevelFilter::Info)
+    }
+    pub fn warn<S: Into<String>>(&self, message: S) {
+        self.log(message, LevelFilter::Warn)
+    }
+    pub fn error<S: Into<String>>(&self, message: S) {
+        self.log(message, LevelFilter::Error)
     }
 }
 

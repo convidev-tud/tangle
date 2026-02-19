@@ -18,7 +18,7 @@ fn add_feature(feature: QualifiedPath, context: &mut CommandContext) -> Result<(
     let target_path = current_path + feature;
     let output = context.git.create_branch(&target_path)?;
     context.log_from_output(&output);
-    context.log_to_stdout(format!(
+    context.info(format!(
         "Created new feature {}",
         target_path.strip_n_left(2)
     ));
@@ -35,7 +35,7 @@ fn print_feature_tree(context: &CommandContext, show_tags: bool) -> Result<(), B
     let area = context.git.get_current_area()?;
     match area.to_feature_root() {
         Some(path) => {
-            context.log_to_stdout(path.display_tree(show_tags));
+            context.info(path.display_tree(show_tags));
         }
         None => {}
     }
@@ -51,7 +51,7 @@ impl CommandDefinition for FeatureCommand {
             .disable_help_subcommand(true)
             .arg(Arg::new("feature").help("Creates new feature as the child of the current one. Requires to be checked out on a feature branch."))
             .arg(Arg::new("delete").short('D').help("Deletes a feature branch"))
-            .arg(make_show_tags())
+            .arg(show_tags())
     }
 }
 impl CommandInterface for FeatureCommand {

@@ -4,6 +4,7 @@ use crate::model::ImportFormat;
 use clap::ArgMatches;
 use std::error::Error;
 use std::ffi::OsString;
+use log::LevelFilter;
 
 pub enum ArgSource<'a> {
     CLI,
@@ -22,7 +23,14 @@ impl CommandRepository {
         }
     }
     fn execute_recursive(&self, context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
-        let current = context.current_command;
+        if context.arg_helper.has_arg("verbosity") {
+            match context.arg_helper.get_count("verbosity") {
+                0 => { log::set_max_level(LevelFilter::Info) }
+                1 => { log::set_max_level(LevelFilter::Debug) }
+                _ => { log::set_max_level(LevelFilter::Trace) }
+            }
+        } else { log::set_max_level(LevelFilter::Info) }
+    let current = context.current_command;
         match current.command.run_command(context) {
             Ok(_) => {}
             Err(err) => return Err(err),

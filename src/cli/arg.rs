@@ -25,4 +25,10 @@ impl<'a> ArgHelper<'a> {
                 .collect::<Vec<_>>(),
         )
     }
+    pub fn get_count(&self, id: &str) -> usize {
+        self.args.get_count(id) as usize
+    }
+    pub fn has_arg(&self, id: &str) -> bool {
+        self.args.contains_id(id)
+    }
 }

@@ -12,7 +12,7 @@ impl CommandDefinition for TagCommand {
             .about("Tag a branch")
             .disable_help_subcommand(true)
             .arg(Arg::new("tag").help("The tag to apply to the current branch"))
-            .arg(make_delete(false).help("Delete tag"))
+            .arg(delete(false).help("Delete tag"))
     }
 }
 
@@ -38,10 +38,10 @@ impl CommandInterface for TagCommand {
                 let current_branch = context.git.get_current_node_path()?;
                 let tags = current_branch.get_tags();
                 if tags.is_empty() {
-                    context.log_to_stdout("No tags on current branch");
+                    context.info("No tags on current branch");
                 } else {
                     for tag in tags {
-                        context.log_to_stdout(tag)
+                        context.info(tag)
                     }
                 }
             }
