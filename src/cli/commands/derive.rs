@@ -254,9 +254,9 @@ mod tests {
                 assert_eq!(
                     derivation_commit.message(),
                     &make_post_derivation_message(&vec![
-                        QualifiedPath::from("main/feature/root/foo"),
-                        QualifiedPath::from("main/feature/root/bar"),
-                        QualifiedPath::from("main/feature/root/baz"),
+                        QualifiedPath::from("/main/feature/root/foo"),
+                        QualifiedPath::from("/main/feature/root/bar"),
+                        QualifiedPath::from("/main/feature/root/baz"),
                     ]),
                 )
             }

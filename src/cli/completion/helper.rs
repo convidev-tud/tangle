@@ -80,7 +80,7 @@ impl<'a> CompletionHelper<'a> {
             0 => Some((None, last_parsed_arg)),
             _ => match last_parsed_arg.get_action() {
                 ArgAction::Set => {
-                    if &ArgHelper::new(&self.arg_matches)
+                    if &ArgHelper::new(self.arg_matches.clone())
                         .get_argument_value::<String>(last_parsed_arg.get_id().as_str())
                         .unwrap()
                         == self.cli_content.last().unwrap()
@@ -126,7 +126,7 @@ impl<'a> CompletionHelper<'a> {
             return vec![];
         }
         let currently_editing = maybe_currently_editing.unwrap().1;
-        ArgHelper::new(&self.arg_matches)
+        ArgHelper::new(self.arg_matches.clone())
             .get_argument_values::<String>(currently_editing.get_id().as_str())
             .unwrap()
     }
@@ -171,6 +171,7 @@ impl<'a> CompletionHelper<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::completion::test_utils::setup_qualified_paths;
 
     fn setup_test_command() -> Command {
         let sub_command = Command::new("sub").arg(Arg::new("sub_option").short('s'));
@@ -185,15 +186,6 @@ mod tests {
             .arg(Arg::new("pos1"))
             .arg(Arg::new("pos2").action(ArgAction::Append))
             .subcommand(sub_command)
-    }
-    fn setup_qualified_paths() -> Vec<QualifiedPath> {
-        vec![
-            QualifiedPath::from("foo"),
-            QualifiedPath::from("foo/bar/baz1"),
-            QualifiedPath::from("foo/bar/baz2"),
-            QualifiedPath::from("foo/abc/def"),
-            QualifiedPath::from("foo/abc"),
-        ]
     }
 
     #[test]
@@ -290,7 +282,7 @@ mod tests {
         let helper = CompletionHelper::new(&cmd, appendix);
         let paths = setup_qualified_paths();
         let mut result =
-            helper.complete_qualified_paths(QualifiedPath::new(), paths.into_iter(), true);
+            helper.complete_qualified_paths(QualifiedPath::from(""), paths.into_iter(), true);
         result.sort();
         assert_eq!(result, vec!["foo/bar/baz2",]);
     }
@@ -311,7 +303,7 @@ mod tests {
         let helper = CompletionHelper::new(&cmd, appendix);
         let paths = setup_qualified_paths();
         let mut result =
-            helper.complete_qualified_paths(QualifiedPath::new(), paths.into_iter(), true);
+            helper.complete_qualified_paths(QualifiedPath::from(""), paths.into_iter(), true);
         result.sort();
         assert_eq!(result, vec!["foo/bar/baz1"]);
     }

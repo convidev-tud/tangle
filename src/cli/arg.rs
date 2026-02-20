@@ -1,11 +1,11 @@
 use clap::ArgMatches;
 
-#[derive(Debug)]
-pub struct ArgHelper<'a> {
-    args: &'a ArgMatches,
+#[derive(Debug, Clone)]
+pub struct ArgHelper {
+    args: ArgMatches,
 }
-impl<'a> ArgHelper<'a> {
-    pub fn new(matches: &'a ArgMatches) -> Self {
+impl ArgHelper {
+    pub fn new(matches: ArgMatches) -> Self {
         Self { args: matches }
     }
     pub fn get_matches(&self) -> &ArgMatches {
@@ -29,6 +29,6 @@ impl<'a> ArgHelper<'a> {
         self.args.get_count(id) as usize
     }
     pub fn has_arg(&self, id: &str) -> bool {
-        self.args.contains_id(id)
+        self.args.try_contains_id(id).unwrap_or_else(|_| false)
     }
 }

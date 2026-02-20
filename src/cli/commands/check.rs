@@ -18,7 +18,7 @@ impl CommandDefinition for CheckCommand {
             .about("Check features for merge conflicts")
             .disable_help_subcommand(true)
             .arg(Arg::new(SOURCE).help("Feature to check against targets"))
-            .arg(Arg::new(TARGETS).help(
+            .arg(Arg::new(TARGETS).action(ArgAction::Append).help(
                 "Targets to check against; If none are provided, will check against all features",
             ))
             .arg(
@@ -55,13 +55,7 @@ impl CommandInterface for CheckCommand {
                     .iter_children_req()
                     .map(|child| child.get_qualified_path())
                     .collect();
-                checker
-                    .check_all(&all_features)?
-                    .map(|statistic| {
-                        context.debug(statistic.to_string());
-                        statistic
-                    })
-                    .collect()
+                checker.check_all(&all_features)?.collect()
             }
             // all is not set, source is set, target not => check source against all
             (false, Some(source), None) => {
@@ -92,33 +86,124 @@ impl CommandInterface for CheckCommand {
                     .collect();
                 checker
                     .check_1_to_n(&qualified_source, &all_other_features)?
-                    .map(|statistic| {
-                        context.debug(statistic.to_string());
-                        statistic
-                    })
                     .collect()
             }
             (false, Some(source), Some(targets)) => {
                 let qualified_source =
-                    feature_root.get_qualified_path() + QualifiedPath::from(source);
-                let qualified_targets: Vec<QualifiedPath> =
-                    targets.into_iter().map(QualifiedPath::from).collect();
+                    current_path.get_qualified_path() + QualifiedPath::from(source);
+                let qualified_targets: Vec<QualifiedPath> = targets
+                    .into_iter()
+                    .map(|target| feature_root.get_qualified_path() + QualifiedPath::from(target))
+                    .collect();
                 checker
                     .check_1_to_n(&qualified_source, &qualified_targets)?
-                    .map(|statistic| {
-                        context.debug(statistic.to_string());
-                        statistic
-                    })
                     .collect()
             }
         };
+        for ok in statistics.iter_ok() {
+            context.debug(ok)
+        }
+        for conflict in statistics.iter_conflicts() {
+            context.warn(conflict)
+        }
+        for error in statistics.iter_errors() {
+            context.error(error)
+        }
         if statistics.n_conflict() == 0 {
             context.info("No conflicts".green().to_string());
-        } else {
-            for conflict in statistics.iter_conflicts() {
-                context.info(conflict);
-            }
         }
         Ok(())
+    }
+
+    // fn shell_complete(
+    //     &self,
+    //     completion_helper: CompletionHelper,
+    //     context: &mut CommandContext,
+    // ) -> Result<Vec<String>, Box<dyn Error>> {
+    //     let currently_editing = completion_helper.currently_editing();
+    //     let completion: Vec<String> = if currently_editing.is_some() {
+    //         match currently_editing.unwrap().get_id().as_str() {
+    //             SOURCE => {}
+    //             TARGETS => {}
+    //             _ => { vec![] }
+    //         }
+    //     } else { vec![] };
+    //     Ok(completion)
+    // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::interface::test_utils::*;
+    use crate::git::interface::{GitInterface, GitPath};
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn check_error_if_not_all_and_no_source() {
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        let repo = CommandRepository::new(
+            Box::new(CheckCommand),
+            GitPath::CustomDirectory(PathBuf::from(path.path())),
+            false,
+        );
+        match repo.execute(ArgSource::SUPPLIED(vec!["check"])) {
+            Ok(_) => {
+                panic!("Should fail")
+            }
+            Err(_) => {
+                assert!(true)
+            }
+        }
+    }
+
+    #[test]
+    fn check_all() {
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        let repo = CommandRepository::new(
+            Box::new(CheckCommand),
+            GitPath::CustomDirectory(PathBuf::from(path.path())),
+        );
+        match repo.execute(ArgSource::SUPPLIED(vec!["check", "--all"])) {
+            Ok(statistic) => {
+                println!("{:?}", statistic);
+                assert!(statistic.contains_log("No conflicts"))
+            }
+            Err(_) => {
+                panic!()
+            }
+        }
+    }
+
+    #[test]
+    fn check_current_feature() {
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        GitInterface::new(GitPath::CustomDirectory(path_buf))
+            .checkout(&QualifiedPath::from("/main/feature/root/foo"))
+            .unwrap();
+        let repo = CommandRepository::new(
+            Box::new(CheckCommand),
+            GitPath::CustomDirectory(PathBuf::from(path.path())),
+            true,
+        );
+        match repo.execute(ArgSource::SUPPLIED(vec!["check", ".", "../bar"])) {
+            Ok(statistics) => {
+                assert!(statistics.contains_log("/main/root/foo and /main/root/bar OK"));
+                assert!(statistics.contains_log("No conflicts"))
+            }
+            Err(_) => {
+                panic!()
+            }
+        }
     }
 }

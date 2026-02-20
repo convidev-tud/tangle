@@ -11,6 +11,17 @@ pub enum ArgSource<'a> {
     SUPPLIED(Vec<&'a str>),
 }
 
+#[derive(Debug, Clone)]
+pub struct RunStatistics {
+    logs: Vec<String>,
+}
+
+impl RunStatistics {
+    pub fn contains_log<S: Into<String>>(&self, log: S) -> bool {
+        self.logs.contains(&log.into())
+    }
+}
+
 pub struct CommandRepository {
     command_map: CommandMap,
     work_path: GitPath,
@@ -22,7 +33,10 @@ impl CommandRepository {
             work_path,
         }
     }
-    fn execute_recursive(&self, context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
+    fn execute_recursive<'a>(
+        &self,
+        mut context: CommandContext<'a>,
+    ) -> Result<CommandContext<'a>, Box<dyn Error>> {
         if context.arg_helper.has_arg(VERBOSE) {
             match context.arg_helper.get_count(VERBOSE) {
                 0 => log::set_max_level(LevelFilter::Info),
@@ -33,20 +47,16 @@ impl CommandRepository {
             log::set_max_level(LevelFilter::Info)
         }
         let current = context.current_command;
-        match current.command.run_command(context) {
+        match current.command.run_command(&mut context) {
             Ok(_) => {}
             Err(err) => return Err(err),
         };
         match context.arg_helper.get_matches().subcommand() {
             Some((sub, sub_args)) => {
                 if let Some(child) = current.find_child(sub) {
-                    self.execute_recursive(&mut CommandContext::new(
-                        child,
-                        context.root_command,
-                        context.git,
-                        ArgHelper::new(sub_args),
-                        context.import_format.clone(),
-                    ))
+                    context.current_command = child;
+                    context.arg_helper = ArgHelper::new(sub_args.clone());
+                    self.execute_recursive(context)
                 } else {
                     let ext_args: Vec<_> = sub_args.get_many::<OsString>("").unwrap().collect();
                     let output = std::process::Command::new("git")
@@ -55,10 +65,10 @@ impl CommandRepository {
                         .output()
                         .expect("failed to execute git");
                     context.log_from_output(&output);
-                    Ok(())
+                    Ok(context)
                 }
             }
-            _ => Ok(()),
+            _ => Ok(context),
         }
     }
     pub fn execute(&self, args: ArgSource) -> Result<(), Box<dyn Error>> {
@@ -70,13 +80,14 @@ impl CommandRepository {
                 .clone()
                 .get_matches_from(supplied),
         };
-        self.execute_recursive(&mut CommandContext::new(
+        let context = CommandContext::new(
             &self.command_map,
             &self.command_map,
-            &mut GitInterface::new(self.work_path.clone()),
-            ArgHelper::new(&args),
+            GitInterface::new(self.work_path.clone()),
+            ArgHelper::new(args),
             ImportFormat::Native,
-        ))?;
+        );
+        self.execute_recursive(context)?;
         Ok(())
     }
 }

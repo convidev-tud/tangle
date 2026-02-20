@@ -8,6 +8,7 @@ use log::{LevelFilter, debug, error, info, trace, warn};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::process::Output;
+use colored::{Color, Colorize};
 
 #[derive(Debug)]
 pub struct CommandMap {
@@ -71,8 +72,8 @@ impl CommandMap {
 pub struct CommandContext<'a> {
     pub current_command: &'a CommandMap,
     pub root_command: &'a CommandMap,
-    pub git: &'a mut GitInterface,
-    pub arg_helper: ArgHelper<'a>,
+    pub git: GitInterface,
+    pub arg_helper: ArgHelper,
     pub import_format: ImportFormat,
 }
 
@@ -80,8 +81,8 @@ impl CommandContext<'_> {
     pub fn new<'a>(
         current_command: &'a CommandMap,
         root_command: &'a CommandMap,
-        git: &'a mut GitInterface,
-        arg_helper: ArgHelper<'a>,
+        git: GitInterface,
+        arg_helper: ArgHelper,
         import_format: ImportFormat,
     ) -> CommandContext<'a> {
         CommandContext {

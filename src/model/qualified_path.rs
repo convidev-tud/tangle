@@ -1,6 +1,6 @@
 use colored::Colorize;
 use std::fmt::{Display, Formatter};
-use std::ops::Add;
+use std::ops::{Add, Index};
 
 const SEPARATOR: char = '/';
 
@@ -10,9 +10,8 @@ pub struct QualifiedPath {
 }
 impl From<String> for QualifiedPath {
     fn from(value: String) -> Self {
-        let qualified_str = value.replace("*", "").replace("_", "");
         let mut qualified_path = Self::new();
-        qualified_path.push(qualified_str.trim().to_string());
+        qualified_path.push(value);
         qualified_path
     }
 }
@@ -106,6 +105,13 @@ impl Display for QualifiedPath {
         f.write_str(self.to_string().blue().to_string().as_str())
     }
 }
+impl Index<usize> for QualifiedPath {
+    type Output = String;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.path[index]
+    }
+}
 impl QualifiedPath {
     pub fn new() -> Self {
         Self { path: Vec::new() }
@@ -129,12 +135,10 @@ impl QualifiedPath {
         self.path.join("/")
     }
     pub fn push<S: Into<String>>(&mut self, path: S) {
-        let split_path = path
-            .into()
-            .split(SEPARATOR)
-            .map(|e| e.to_string())
-            .collect::<Vec<String>>();
-        self.path.extend(split_path);
+        let qualified_str = path.into().replace("*", "").replace("_", "");
+        for split in qualified_str.trim().split(SEPARATOR) {
+            self.path.push(split.to_string());
+        }
     }
     pub fn strip_n(&self, n_left: usize, n_right: usize) -> QualifiedPath {
         QualifiedPath::from(self.path[n_left..n_right].to_vec())
@@ -201,6 +205,17 @@ impl QualifiedPath {
         let mut new_path = self.path.clone();
         new_path.push("".to_string());
         QualifiedPath::from(new_path)
+    }
+    pub fn as_absolute(&self) -> QualifiedPath {
+        let mut new_path = self.path.clone();
+        new_path.insert(0, "".to_string());
+        QualifiedPath::from(new_path)
+    }
+    pub fn is_dir(&self) -> bool {
+        self.path.len() > 1 && self.last().unwrap() == ""
+    }
+    pub fn is_absolute(&self) -> bool {
+        self.path.len() > 0 && self.first().unwrap() == ""
     }
 }
 
@@ -316,5 +331,13 @@ mod tests {
     fn test_qualified_path_trim() {
         let path = QualifiedPath::from("foo/bar");
         assert_eq!(path.strip_n(0, path.len() - 1).path, vec!["foo"]);
+    }
+
+    #[test]
+    fn test_qualified_path_as_absolute() {
+        let path = QualifiedPath::from("foo/bar");
+        let absolute = path.as_absolute();
+        assert!(absolute.is_absolute());
+        assert_eq!(absolute, "/foo/bar");
     }
 }

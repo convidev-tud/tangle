@@ -68,23 +68,25 @@ impl GitInterface {
         let branch_output = self.raw_git_interface.run(vec!["branch"])?;
         let all_branches: Vec<String> = u8_to_string(&branch_output.stdout)
             .split("\n")
-            .map(|raw_string| raw_string.trim().to_string())
+            .map(|raw_string| raw_string.to_string())
             .collect();
         for branch in all_branches {
             if !branch.is_empty() {
-                self.model
-                    .insert_qualified_path(QualifiedPath::from(branch), false)?;
+                let mut path = QualifiedPath::from("");
+                path.push(branch);
+                self.model.insert_qualified_path(path, false)?;
             }
         }
         let tag_output = self.raw_git_interface.run(vec!["tag"])?;
         let all_tags: Vec<String> = u8_to_string(&tag_output.stdout)
             .split("\n")
-            .map(|raw_string| raw_string.trim().to_string())
+            .map(|raw_string| raw_string.to_string())
             .collect();
         for tag in all_tags {
             if !tag.is_empty() {
-                self.model
-                    .insert_qualified_path(QualifiedPath::from(tag), true)?;
+                let mut path = QualifiedPath::from("");
+                path.push(tag);
+                self.model.insert_qualified_path(path, true)?;
             }
         }
         Ok(())
@@ -101,7 +103,9 @@ impl GitInterface {
         ))
     }
     pub fn get_current_qualified_path(&self) -> Result<QualifiedPath, GitError> {
-        Ok(QualifiedPath::from(self.get_current_branch()?))
+        let mut base = QualifiedPath::from("");
+        base.push(self.get_current_branch()?);
+        Ok(base)
     }
     pub fn get_current_node_path(&self) -> Result<NodePath<AnyNodeType>, GitError> {
         let current_qualified_path = self.get_current_qualified_path()?;
@@ -109,7 +113,7 @@ impl GitInterface {
     }
     pub fn get_current_area(&self) -> Result<NodePath<Area>, GitError> {
         let current_qualified_path = self.get_current_qualified_path()?;
-        let qualified_path = QualifiedPath::from(current_qualified_path.first().unwrap().clone());
+        let qualified_path = QualifiedPath::from(&current_qualified_path[1]);
         Ok(self.model.get_area(&qualified_path).unwrap())
     }
 
@@ -288,5 +292,43 @@ pub mod test_utils {
             git.run(vec!["branch", branch])?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::interface::test_utils::{populate_with_features, prepare_empty_git_repo};
+    use tempfile::TempDir;
+
+    #[test]
+    fn interface_populate_model() {
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        let interface = GitInterface::new(GitPath::CustomDirectory(path_buf));
+        let paths = interface.get_model().get_qualified_paths_with_branches();
+        assert_eq!(
+            paths,
+            &vec![
+                "/main/feature/root/bar",
+                "/main/feature/root/baz",
+                "/main/feature/root/foo",
+                "/main/feature/root",
+                "/main",
+            ]
+        );
+    }
+
+    #[test]
+    fn interface_get_current_branch_absolute() {
+        let path = TempDir::new().unwrap();
+        let path_buf = PathBuf::from(path.path());
+        prepare_empty_git_repo(path_buf.clone()).unwrap();
+        populate_with_features(path_buf.clone()).unwrap();
+        let interface = GitInterface::new(GitPath::CustomDirectory(path_buf));
+        let current = interface.get_current_qualified_path().unwrap();
+        assert_eq!(current, "/main")
     }
 }

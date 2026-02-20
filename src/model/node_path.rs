@@ -69,6 +69,15 @@ impl NodePath<AnyNodeType> {
     }
 }
 
+impl NodePath<VirtualRoot> {
+    pub fn to_area(self, area: &QualifiedPath) -> Option<NodePath<Area>> {
+        match self.to(area)?.concretize() {
+            NodePathType::Area(area) => Some(area),
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl NodePath<Area> {
     pub fn get_path_to_feature_root(&self) -> QualifiedPath {
         self.get_qualified_path() + QualifiedPath::from(FEATURES_PREFIX)
@@ -133,9 +142,6 @@ impl<T: Clone + Debug> NodePath<T> {
     }
     pub fn transform_to_any_type(self) -> NodePath<AnyNodeType> {
         NodePath::<AnyNodeType>::from_concrete(self)
-    }
-    pub fn to_parent_area(self) -> NodePath<Area> {
-        NodePath::<Area>::new(vec![self.path.first().unwrap().clone()])
     }
     pub fn get_qualified_path(&self) -> QualifiedPath {
         let mut path = QualifiedPath::new();

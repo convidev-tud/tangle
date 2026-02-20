@@ -4,14 +4,17 @@ use crate::model::*;
 use clap::{Arg, Command};
 use std::error::Error;
 
-fn delete_product(product: QualifiedPath, context: &CommandContext) -> Result<(), Box<dyn Error>> {
+fn delete_product(
+    product: QualifiedPath,
+    context: &mut CommandContext,
+) -> Result<(), Box<dyn Error>> {
     let area = context.git.get_current_area()?;
     let complete_path = area.get_path_to_product_root() + product;
     let output = context.git.delete_branch(&complete_path)?;
     context.log_from_output(&output);
     Ok(())
 }
-fn print_product_tree(context: &CommandContext) -> Result<(), Box<dyn Error>> {
+fn print_product_tree(context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
     let area = context.git.get_current_area()?;
     match area.to_product_root() {
         Some(path) => {
@@ -41,11 +44,11 @@ impl CommandInterface for ProductCommand {
         let maybe_delete = context.arg_helper.get_argument_value::<String>("delete");
         match maybe_delete {
             Some(delete) => {
-                delete_product(QualifiedPath::from(delete), &context)?;
+                delete_product(QualifiedPath::from(delete), context)?;
                 Ok(())
             }
             None => {
-                print_product_tree(&context)?;
+                print_product_tree(context)?;
                 Ok(())
             }
         }

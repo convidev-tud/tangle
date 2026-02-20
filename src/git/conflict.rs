@@ -66,13 +66,18 @@ impl ConflictStatistics {
             ConflictStatistic::ERROR(_, _) => self.error.push(statistic),
         }
     }
+    pub fn iter_all(&self) -> impl Iterator<Item = &ConflictStatistic> {
+        self.iter_ok()
+            .chain(self.iter_conflicts())
+            .chain(self.iter_errors())
+    }
     pub fn iter_ok(&self) -> impl Iterator<Item = &ConflictStatistic> {
         self.ok.iter()
     }
     pub fn iter_conflicts(&self) -> impl Iterator<Item = &ConflictStatistic> {
         self.conflict.iter()
     }
-    pub fn iter_error(&self) -> impl Iterator<Item = &ConflictStatistic> {
+    pub fn iter_errors(&self) -> impl Iterator<Item = &ConflictStatistic> {
         self.error.iter()
     }
     pub fn n_ok(&self) -> usize {

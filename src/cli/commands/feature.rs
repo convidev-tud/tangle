@@ -24,14 +24,17 @@ fn add_feature(feature: QualifiedPath, context: &mut CommandContext) -> Result<(
     ));
     Ok(())
 }
-fn delete_feature(feature: QualifiedPath, context: &CommandContext) -> Result<(), Box<dyn Error>> {
+fn delete_feature(
+    feature: QualifiedPath,
+    context: &mut CommandContext,
+) -> Result<(), Box<dyn Error>> {
     let area = context.git.get_current_area()?;
     let complete_path = area.get_path_to_feature_root() + feature;
     let output = context.git.delete_branch(&complete_path)?;
     context.log_from_output(&output);
     Ok(())
 }
-fn print_feature_tree(context: &CommandContext, show_tags: bool) -> Result<(), Box<dyn Error>> {
+fn print_feature_tree(context: &mut CommandContext, show_tags: bool) -> Result<(), Box<dyn Error>> {
     let area = context.git.get_current_area()?;
     match area.to_feature_root() {
         Some(path) => {
@@ -64,7 +67,7 @@ impl CommandInterface for FeatureCommand {
             .unwrap();
         match maybe_delete {
             Some(delete) => {
-                delete_feature(QualifiedPath::from(delete), &context)?;
+                delete_feature(QualifiedPath::from(delete), context)?;
                 return Ok(());
             }
             None => {}
@@ -145,10 +148,10 @@ mod tests {
                 let interface = GitInterface::in_directory(path_buf);
                 check_existence(&interface).unwrap();
                 let branch_history = interface
-                    .get_commit_history(&QualifiedPath::from("main/feature/root"))
+                    .get_commit_history(&QualifiedPath::from("/main/feature/root"))
                     .unwrap();
                 let main_history = interface
-                    .get_commit_history(&QualifiedPath::from("main"))
+                    .get_commit_history(&QualifiedPath::from("/main"))
                     .unwrap();
                 assert_eq!(branch_history, main_history);
             }
@@ -174,10 +177,10 @@ mod tests {
         populate_with_features(path_buf.clone()).unwrap();
         let interface = GitInterface::in_directory(path_buf.clone());
         interface
-            .checkout(&QualifiedPath::from("main/feature/root/foo"))
+            .checkout(&QualifiedPath::from("/main/feature/root/foo"))
             .unwrap();
         interface.empty_commit("test").unwrap();
-        interface.checkout(&QualifiedPath::from("main")).unwrap();
+        interface.checkout(&QualifiedPath::from("/main")).unwrap();
         let repo = CommandRepository::new(
             Box::new(FeatureCommand),
             GitPath::CustomDirectory(path_buf.clone()),
@@ -187,10 +190,10 @@ mod tests {
                 let interface = GitInterface::in_directory(path_buf);
                 check_existence(&interface).unwrap();
                 let branch_history = interface
-                    .get_commit_history(&QualifiedPath::from("main/feature/root/foo/1"))
+                    .get_commit_history(&QualifiedPath::from("/main/feature/root/foo/1"))
                     .unwrap();
                 let main_history = interface
-                    .get_commit_history(&QualifiedPath::from("main"))
+                    .get_commit_history(&QualifiedPath::from("/main"))
                     .unwrap();
                 assert_eq!(branch_history, main_history);
             }
@@ -207,7 +210,7 @@ mod tests {
         populate_with_products(path_buf.clone()).unwrap();
         let interface = GitInterface::in_directory(path_buf.clone());
         interface
-            .checkout(&QualifiedPath::from("main/product/myprod"))
+            .checkout(&QualifiedPath::from("/main/product/myprod"))
             .unwrap();
         let repo = CommandRepository::new(
             Box::new(FeatureCommand),
