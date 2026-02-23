@@ -97,7 +97,6 @@ impl CommandInterface for FeatureCommand {
                             HasBranchFilteringNodePathTransformer::new(true)
                                 .transform(path.iter_children_req())
                                 .map(|path| path.get_qualified_path()),
-                            false,
                         ),
                         None => {
                             vec![]

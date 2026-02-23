@@ -3,7 +3,6 @@ use crate::cli::completion::RelativePathCompleter;
 use crate::model::QualifiedPath;
 use clap::parser::ValueSource;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use std::any::Any;
 use std::ops::Range;
 
 #[derive(Debug, Clone)]
@@ -120,58 +119,38 @@ impl<'a> CompletionHelper<'a> {
     pub fn currently_editing(&self) -> Option<&Arg> {
         Some(self.currently_editing_with_range()?.1)
     }
+    pub fn get_appendix_of(&self, name: &str) -> Vec<String> {
+        let helper = ArgHelper::new(self.arg_matches.clone());
+        if !helper.has_arg(name) {
+            return vec![];
+        }
+        helper.get_argument_values(name).unwrap()
+    }
     pub fn get_appendix_of_currently_edited(&self) -> Vec<String> {
         let maybe_currently_editing = self.currently_editing_with_range();
         if maybe_currently_editing.is_none() {
             return vec![];
         }
         let currently_editing = maybe_currently_editing.unwrap().1;
-        ArgHelper::new(self.arg_matches.clone())
-            .get_argument_values::<String>(currently_editing.get_id().as_str())
-            .unwrap()
+        self.get_appendix_of(currently_editing.get_id().as_str())
     }
     pub fn complete_qualified_paths(
         &self,
         reference: QualifiedPath,
         paths: impl Iterator<Item = QualifiedPath>,
-        ignore_existing_occurrences: bool,
     ) -> Vec<String> {
         let maybe_last = self.get_last();
         if maybe_last.is_none() {
             return vec![];
         }
-        if ignore_existing_occurrences {
-            RelativePathCompleter::new(reference.clone()).complete(
-                QualifiedPath::from(maybe_last.unwrap()),
-                self.treat_existing_occurrences(&reference, paths),
-            )
-        } else {
-            RelativePathCompleter::new(reference)
-                .complete(QualifiedPath::from(maybe_last.unwrap()), paths)
-        }
-    }
-    fn treat_existing_occurrences(
-        &self,
-        reference: &QualifiedPath,
-        paths: impl Iterator<Item = QualifiedPath>,
-    ) -> impl Iterator<Item = QualifiedPath> {
-        let mut currently_editing_appendix = self.get_appendix_of_currently_edited();
-        currently_editing_appendix.pop();
-        paths.filter_map(move |path| {
-            if currently_editing_appendix.contains(&path.strip_n_left(reference.len()).to_string())
-            {
-                None
-            } else {
-                Some(path)
-            }
-        })
+        RelativePathCompleter::new(reference)
+            .complete(QualifiedPath::from(maybe_last.unwrap()), paths)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::completion::test_utils::setup_qualified_paths;
 
     fn setup_test_command() -> Command {
         let sub_command = Command::new("sub").arg(Arg::new("sub_option").short('s'));
@@ -276,17 +255,6 @@ mod tests {
         );
     }
     #[test]
-    fn test_complete_qualified_path_stepwise_ignore_prior_occurrences() {
-        let cmd = setup_test_command();
-        let appendix = vec!["mytool", "abc", "foo/bar/baz1", "foo/b"];
-        let helper = CompletionHelper::new(&cmd, appendix);
-        let paths = setup_qualified_paths();
-        let mut result =
-            helper.complete_qualified_paths(QualifiedPath::from(""), paths.into_iter(), true);
-        result.sort();
-        assert_eq!(result, vec!["foo/bar/baz2",]);
-    }
-    #[test]
     fn test_get_all_of_currently_edited_except_last() {
         let cmd = setup_test_command();
         let appendix = vec!["mytool", "foo", "a", "b", "c"];
@@ -295,17 +263,6 @@ mod tests {
             helper.get_appendix_of_currently_edited(),
             vec!["a", "b", "c"]
         )
-    }
-    #[test]
-    fn test_complete_qualified_path_stepwise_do_not_ignore_current_occurrences() {
-        let cmd = setup_test_command();
-        let appendix = vec!["mytool", "abc", "foo/bar/baz1"];
-        let helper = CompletionHelper::new(&cmd, appendix);
-        let paths = setup_qualified_paths();
-        let mut result =
-            helper.complete_qualified_paths(QualifiedPath::from(""), paths.into_iter(), true);
-        result.sort();
-        assert_eq!(result, vec!["foo/bar/baz1"]);
     }
     #[test]
     fn test_get_all_of_currently_edited_empty() {

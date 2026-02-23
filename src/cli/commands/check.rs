@@ -2,7 +2,8 @@ use crate::cli::completion::CompletionHelper;
 use crate::cli::*;
 use crate::git::conflict::{ConflictChecker, ConflictStatistics};
 use crate::model::{
-    HasBranchFilteringNodePathTransformer, NodePathTransformer, NodePathType, QualifiedPath,
+    ByQPathFilteringNodePathTransformer, HasBranchFilteringNodePathTransformer,
+    NodePathTransformer, NodePathType, QPathFilteringMode, QualifiedPath,
 };
 use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
@@ -149,13 +150,28 @@ impl CommandInterface for CheckCommand {
                 SOURCE => completion_helper.complete_qualified_paths(
                     context.git.get_current_qualified_path()?,
                     relevant_paths.map(|path| path.get_qualified_path()),
-                    false,
                 ),
-                TARGETS => completion_helper.complete_qualified_paths(
-                    context.git.get_current_qualified_path()?,
-                    relevant_paths.map(|path| path.get_qualified_path()),
-                    true,
-                ),
+                TARGETS => {
+                    let current_path = context.git.get_current_qualified_path()?;
+                    let to_exclude1 = completion_helper.get_appendix_of(SOURCE);
+                    let to_exclude2 = completion_helper.get_appendix_of(TARGETS);
+                    let mut to_exclude = vec![];
+                    to_exclude.extend(to_exclude1);
+                    to_exclude.extend(to_exclude2);
+                    let to_exclude_paths = to_exclude
+                        .into_iter()
+                        .map(|p| current_path.clone() + QualifiedPath::from(p))
+                        .collect();
+                    let filter = ByQPathFilteringNodePathTransformer::new(
+                        to_exclude_paths,
+                        QPathFilteringMode::EXCLUDE,
+                    );
+                    let filtered = filter.transform(relevant_paths);
+                    completion_helper.complete_qualified_paths(
+                        context.git.get_current_qualified_path()?,
+                        filtered.map(|path| path.get_qualified_path()),
+                    )
+                }
                 _ => {
                     vec![]
                 }

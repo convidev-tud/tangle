@@ -1,13 +1,19 @@
 use crate::cli::completion::*;
 use crate::cli::*;
 use crate::git::conflict::{ConflictChecker, ConflictStatistic, ConflictStatistics};
-use crate::model::{HasBranchFilteringNodePathTransformer, NodePathTransformer, QualifiedPath};
+use crate::model::{
+    ByQPathFilteringNodePathTransformer, ChainingNodePathTransformer,
+    HasBranchFilteringNodePathTransformer, NodePathTransformer, NodePathTransformers,
+    QPathFilteringMode, QualifiedPath,
+};
 use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
 use petgraph::algo::maximal_cliques;
 use petgraph::graph::UnGraph;
 use std::collections::HashMap;
 use std::error::Error;
+
+const FEATURES: &str = "features";
 
 fn map_paths_to_id(
     paths: &Vec<QualifiedPath>,
@@ -88,11 +94,7 @@ impl CommandDefinition for DeriveCommand {
         Command::new("derive")
             .about("Derive a product")
             .disable_help_subcommand(true)
-            .arg(
-                Arg::new("features")
-                    .action(ArgAction::Append)
-                    .required(true),
-            )
+            .arg(Arg::new(FEATURES).action(ArgAction::Append).required(true))
             .arg(
                 Arg::new("product")
                     .short('p')
@@ -115,7 +117,7 @@ impl CommandInterface for DeriveCommand {
 
         let all_features = context
             .arg_helper
-            .get_argument_values::<String>("features")
+            .get_argument_values::<String>(FEATURES)
             .unwrap()
             .into_iter()
             .map(|e| current_area.get_path_to_feature_root() + QualifiedPath::from(e))
@@ -173,16 +175,34 @@ impl CommandInterface for DeriveCommand {
             return Ok(vec![]);
         }
         let feature_root = maybe_feature_root.unwrap();
+        let feature_root_path = feature_root.get_qualified_path();
         let current = completion_helper.currently_editing();
         let result = match current {
             Some(value) => match value.get_id().as_str() {
-                "features" => completion_helper.complete_qualified_paths(
-                    feature_root.get_qualified_path(),
-                    HasBranchFilteringNodePathTransformer::new(true)
-                        .transform(feature_root.iter_children_req())
-                        .map(|path| path.get_qualified_path()),
-                    true,
-                ),
+                FEATURES => {
+                    let to_filter = completion_helper
+                        .get_appendix_of(FEATURES)
+                        .into_iter()
+                        .map(|p| feature_root_path.clone() + QualifiedPath::from(p))
+                        .collect();
+                    let transformer = ChainingNodePathTransformer::new(vec![
+                        NodePathTransformers::HasBranchFilteringNodePathTransformer(
+                            HasBranchFilteringNodePathTransformer::new(true),
+                        ),
+                        NodePathTransformers::ByQPathFilteringNodePathTransformer(
+                            ByQPathFilteringNodePathTransformer::new(
+                                to_filter,
+                                QPathFilteringMode::EXCLUDE,
+                            ),
+                        ),
+                    ]);
+                    completion_helper.complete_qualified_paths(
+                        feature_root.get_qualified_path(),
+                        transformer
+                            .transform(feature_root.iter_children_req())
+                            .map(|path| path.get_qualified_path()),
+                    )
+                }
                 _ => vec![],
             },
             None => vec![],

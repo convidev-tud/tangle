@@ -39,7 +39,6 @@ impl CommandInterface for CheckoutCommand {
             "branch" => completion_helper.complete_qualified_paths(
                 context.git.get_current_qualified_path()?,
                 all_branches.iter().map(|path| path.clone()),
-                false,
             ),
             _ => vec![],
         };
