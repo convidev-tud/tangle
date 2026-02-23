@@ -146,20 +146,16 @@ impl CommandInterface for CheckCommand {
             let transformer = HasBranchFilteringNodePathTransformer::new(true);
             let relevant_paths = transformer.transform(feature_root.iter_children_req());
             match currently_editing.unwrap().get_id().as_str() {
-                SOURCE => {
-                    completion_helper.complete_qualified_paths(
-                        context.git.get_current_qualified_path()?,
-                        relevant_paths.map(|path| path.get_qualified_path()),
-                        false,
-                    )
-                }
-                TARGETS => {
-                    completion_helper.complete_qualified_paths(
-                        context.git.get_current_qualified_path()?,
-                        relevant_paths.map(|path| path.get_qualified_path()),
-                        true,
-                    )
-                }
+                SOURCE => completion_helper.complete_qualified_paths(
+                    context.git.get_current_qualified_path()?,
+                    relevant_paths.map(|path| path.get_qualified_path()),
+                    false,
+                ),
+                TARGETS => completion_helper.complete_qualified_paths(
+                    context.git.get_current_qualified_path()?,
+                    relevant_paths.map(|path| path.get_qualified_path()),
+                    true,
+                ),
                 _ => {
                     vec![]
                 }
