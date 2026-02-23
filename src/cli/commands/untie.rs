@@ -60,21 +60,21 @@ impl CommandInterface for UntieCommand {
         }
         let hash: String = match maybe_commit {
             Some(commit) => commit,
-            None => commit_history.get(0).unwrap().hash().clone(),
+            None => commit_history.get(0).unwrap().get_hash().clone(),
         };
         let mut has_valid = false;
         let mut derivation_found = false;
         let mut features: Vec<QualifiedPath> = Vec::new();
         commit_history.reverse();
         for commit in commit_history.iter() {
-            if commit.message().contains("DERIVATION FINISHED") {
-                if commit.hash() == &hash {
+            if commit.get_message().contains("DERIVATION FINISHED") {
+                if commit.get_hash() == &hash {
                     return Err("Derivation commit cannot be untied".into());
                 }
                 derivation_found = true;
-                features.extend(extract_feature_names(&commit.message()));
+                features.extend(extract_feature_names(&commit.get_message()));
             } else {
-                if derivation_found && commit.hash() == &hash {
+                if derivation_found && commit.get_hash() == &hash {
                     has_valid = true;
                     break;
                 }

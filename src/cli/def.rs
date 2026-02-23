@@ -94,8 +94,8 @@ impl CommandContext<'_> {
         }
     }
     pub fn log_from_output(&self, output: &Output) {
-        self.info(u8_to_string(&output.stdout));
-        self.error(u8_to_string(&output.stderr));
+        self.info(u8_to_string(&output.stdout).trim());
+        self.error(u8_to_string(&output.stderr).trim());
     }
     pub fn trace<S: Into<String>>(&self, message: S) {
         self.log(message, LevelFilter::Trace)
@@ -115,14 +115,13 @@ impl CommandContext<'_> {
 
     fn log<S: Into<String>>(&self, message: S, level: LevelFilter) {
         let converted = message.into();
-        let trimmed = converted.trim();
         if converted.len() > 0 {
             match level {
-                LevelFilter::Error => error!("{}", trimmed),
-                LevelFilter::Warn => warn!("{}", trimmed),
-                LevelFilter::Info => info!("{}", trimmed),
-                LevelFilter::Debug => debug!("{}", trimmed),
-                LevelFilter::Trace => trace!("{}", trimmed),
+                LevelFilter::Error => error!("{}", converted),
+                LevelFilter::Warn => warn!("{}", converted),
+                LevelFilter::Info => info!("{}", converted),
+                LevelFilter::Debug => debug!("{}", converted),
+                LevelFilter::Trace => trace!("{}", converted),
                 LevelFilter::Off => {}
             }
         }

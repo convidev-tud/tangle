@@ -23,10 +23,10 @@ impl Commit {
             message: message.into(),
         }
     }
-    pub fn hash(&self) -> &String {
+    pub fn get_hash(&self) -> &String {
         &self.hash
     }
-    pub fn message(&self) -> &String {
+    pub fn get_message(&self) -> &String {
         &self.message
     }
 }
