@@ -93,27 +93,6 @@ impl CommandContext<'_> {
             import_format,
         }
     }
-    fn transform_branch_names<S: Into<String>>(&self, to_print: S) -> String {
-        let mut result = to_print.into();
-        for branch in self.git.get_model().get_qualified_paths_with_branches() {
-            result = result.replace(branch.to_git_branch().as_str(), branch.to_string().as_str());
-        }
-        result
-    }
-    fn log<S: Into<String>>(&self, message: S, level: LevelFilter) {
-        let converted = message.into();
-        if converted.len() > 0 {
-            let to_send = self.transform_branch_names(converted.trim_end());
-            match level {
-                LevelFilter::Error => error!("{}", to_send),
-                LevelFilter::Warn => warn!("{}", to_send),
-                LevelFilter::Info => info!("{}", to_send),
-                LevelFilter::Debug => debug!("{}", to_send),
-                LevelFilter::Trace => trace!("{}", to_send),
-                LevelFilter::Off => {}
-            }
-        }
-    }
     pub fn log_from_output(&self, output: &Output) {
         self.info(u8_to_string(&output.stdout));
         self.error(u8_to_string(&output.stderr));
@@ -132,6 +111,20 @@ impl CommandContext<'_> {
     }
     pub fn error<S: Into<String>>(&self, message: S) {
         self.log(message, LevelFilter::Error)
+    }
+
+    fn log<S: Into<String>>(&self, message: S, level: LevelFilter) {
+        let converted = message.into();
+        if converted.len() > 0 {
+            match level {
+                LevelFilter::Error => error!("{}", converted),
+                LevelFilter::Warn => warn!("{}", converted),
+                LevelFilter::Info => info!("{}", converted),
+                LevelFilter::Debug => debug!("{}", converted),
+                LevelFilter::Trace => trace!("{}", converted),
+                LevelFilter::Off => {}
+            }
+        }
     }
 }
 
