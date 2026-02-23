@@ -126,7 +126,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn feature_add_root_from_area() {
+    fn test_feature_add_root_from_area() {
         fn check_existence(interface: &GitInterface) -> Option<NodePath<Feature>> {
             interface
                 .get_current_area()
@@ -159,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    fn feature_add_recursive_from_area() {
+    fn test_feature_add_recursive_from_area() {
         fn check_existence(interface: &GitInterface) -> Option<NodePath<Feature>> {
             interface
                 .get_current_area()
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn feature_add_error() {
+    fn test_feature_add_error() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();

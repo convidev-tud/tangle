@@ -115,13 +115,14 @@ impl CommandContext<'_> {
 
     fn log<S: Into<String>>(&self, message: S, level: LevelFilter) {
         let converted = message.into();
+        let trimmed = converted.trim();
         if converted.len() > 0 {
             match level {
-                LevelFilter::Error => error!("{}", converted),
-                LevelFilter::Warn => warn!("{}", converted),
-                LevelFilter::Info => info!("{}", converted),
-                LevelFilter::Debug => debug!("{}", converted),
-                LevelFilter::Trace => trace!("{}", converted),
+                LevelFilter::Error => error!("{}", trimmed),
+                LevelFilter::Warn => warn!("{}", trimmed),
+                LevelFilter::Info => info!("{}", trimmed),
+                LevelFilter::Debug => debug!("{}", trimmed),
+                LevelFilter::Trace => trace!("{}", trimmed),
                 LevelFilter::Off => {}
             }
         }

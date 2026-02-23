@@ -221,7 +221,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn derivation_no_conflicts() {
+    fn test_derivation_no_conflicts() {
         let path = TempDir::new().unwrap();
         prepare_empty_git_repo(PathBuf::from(path.path())).unwrap();
         populate_with_features(PathBuf::from(path.path())).unwrap();
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn derivation_commit() {
+    fn test_derivation_commit() {
         let path = TempDir::new().unwrap();
         prepare_empty_git_repo(PathBuf::from(path.path())).unwrap();
         populate_with_features(PathBuf::from(path.path())).unwrap();

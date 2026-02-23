@@ -193,7 +193,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn check_error_if_not_all_and_no_source() {
+    fn test_check_error_if_not_all_and_no_source() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn check_all() {
+    fn test_check_all() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn check_current_feature() {
+    fn test_check_current_feature() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn check_no_feature() {
+    fn test_check_no_feature() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn check_specific_targets_relative_path() {
+    fn test_check_specific_targets_relative_path() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn check_specific_targets_absolute_path() {
+    fn test_check_specific_targets_absolute_path() {
         let path = TempDir::new().unwrap();
         let path_buf = PathBuf::from(path.path());
         prepare_empty_git_repo(path_buf.clone()).unwrap();
