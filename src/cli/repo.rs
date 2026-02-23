@@ -71,8 +71,17 @@ impl CommandRepository {
             _ => Ok(context),
         }
     }
-    pub fn execute(&self, args: ArgSource) -> Result<(), Box<dyn Error>> {
-        let args: ArgMatches = match args {
+    pub fn execute(&self, arg_source: ArgSource) -> Result<(), Box<dyn Error>> {
+        let context = self.build_context(arg_source, ImportFormat::Native);
+        self.execute_recursive(context)?;
+        Ok(())
+    }
+    pub fn build_context(
+        &self,
+        arg_source: ArgSource,
+        import_format: ImportFormat,
+    ) -> CommandContext {
+        let args: ArgMatches = match arg_source {
             ArgSource::CLI => self.command_map.clap_command.clone().get_matches(),
             ArgSource::SUPPLIED(supplied) => self
                 .command_map
@@ -80,14 +89,12 @@ impl CommandRepository {
                 .clone()
                 .get_matches_from(supplied),
         };
-        let context = CommandContext::new(
+        CommandContext::new(
             &self.command_map,
             &self.command_map,
             GitInterface::new(self.work_path.clone()),
             ArgHelper::new(args),
-            ImportFormat::Native,
-        );
-        self.execute_recursive(context)?;
-        Ok(())
+            import_format,
+        )
     }
 }

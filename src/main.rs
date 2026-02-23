@@ -1,4 +1,4 @@
-use log::{error, set_logger, set_max_level, LevelFilter, Metadata, Record};
+use log::{LevelFilter, Metadata, Record, error, set_logger, set_max_level};
 use tangl::cli::{ArgSource, CommandRepository, TangleCommand};
 use tangl::git::interface::GitPath;
 use tangl::logging::PrintingLogger;

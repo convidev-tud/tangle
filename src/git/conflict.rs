@@ -11,6 +11,25 @@ pub enum ConflictStatistic {
     ERROR((QualifiedPath, QualifiedPath), GitError),
 }
 
+impl PartialEq for ConflictStatistic {
+    fn eq(&self, other: &Self) -> bool {
+        match other {
+            Self::OK((other_l, other_r)) => match self {
+                Self::OK((self_l, self_r)) => self_l == other_l && self_r == other_r,
+                _ => false,
+            },
+            Self::CONFLICT((other_l, other_r)) => match self {
+                Self::CONFLICT((self_l, self_r)) => self_l == other_l && self_r == other_r,
+                _ => false,
+            },
+            Self::ERROR((other_l, other_r), _) => match self {
+                Self::ERROR((self_l, self_r), _) => self_l == other_l && self_r == other_r,
+                _ => false,
+            },
+        }
+    }
+}
+
 impl Display for ConflictStatistic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let formatted = match self {
@@ -88,6 +107,11 @@ impl ConflictStatistics {
     }
     pub fn n_errors(&self) -> usize {
         self.error.len()
+    }
+    pub fn contains(&self, statistic: &ConflictStatistic) -> bool {
+        self.ok.contains(statistic)
+            || self.conflict.contains(statistic)
+            || self.error.contains(statistic)
     }
 }
 
