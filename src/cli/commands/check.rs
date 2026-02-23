@@ -1,6 +1,9 @@
+use crate::cli::completion::CompletionHelper;
 use crate::cli::*;
 use crate::git::conflict::{ConflictChecker, ConflictStatistics};
-use crate::model::{NodePathType, QualifiedPath};
+use crate::model::{
+    HasBranchFilteringNodePathTransformer, NodePathTransformer, NodePathType, QualifiedPath,
+};
 use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
 use std::error::Error;
@@ -129,21 +132,43 @@ impl CommandInterface for CheckCommand {
         Ok(())
     }
 
-    // fn shell_complete(
-    //     &self,
-    //     completion_helper: CompletionHelper,
-    //     context: &mut CommandContext,
-    // ) -> Result<Vec<String>, Box<dyn Error>> {
-    //     let currently_editing = completion_helper.currently_editing();
-    //     let completion: Vec<String> = if currently_editing.is_some() {
-    //         match currently_editing.unwrap().get_id().as_str() {
-    //             SOURCE => {}
-    //             TARGETS => {}
-    //             _ => { vec![] }
-    //         }
-    //     } else { vec![] };
-    //     Ok(completion)
-    // }
+    fn shell_complete(
+        &self,
+        completion_helper: CompletionHelper,
+        context: &mut CommandContext,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let currently_editing = completion_helper.currently_editing();
+        let completion: Vec<String> = if currently_editing.is_some() {
+            let feature_root = match context.git.get_current_area()?.to_feature_root() {
+                Some(path) => path,
+                None => return Ok(vec![]),
+            };
+            let transformer = HasBranchFilteringNodePathTransformer::new(true);
+            let relevant_paths = transformer.transform(feature_root.iter_children_req());
+            match currently_editing.unwrap().get_id().as_str() {
+                SOURCE => {
+                    completion_helper.complete_qualified_paths(
+                        context.git.get_current_qualified_path()?,
+                        relevant_paths.map(|path| path.get_qualified_path()),
+                        false,
+                    )
+                }
+                TARGETS => {
+                    completion_helper.complete_qualified_paths(
+                        context.git.get_current_qualified_path()?,
+                        relevant_paths.map(|path| path.get_qualified_path()),
+                        true,
+                    )
+                }
+                _ => {
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
+        Ok(completion)
+    }
 }
 
 #[cfg(test)]
