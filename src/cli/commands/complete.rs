@@ -11,20 +11,27 @@ impl CommandDefinition for HiddenCompletionCommand {
         Command::new("__completion")
             .hide(true)
             .arg(Arg::new("cli").raw(true))
+            .arg(Arg::new("index").short('i'))
             .disable_help_subcommand(true)
     }
 }
 
 impl CommandInterface for HiddenCompletionCommand {
     fn run_command(&self, context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
+        let cursor_index: usize = context
+            .arg_helper
+            .get_argument_value::<String>("index")
+            .unwrap()
+            .parse()?;
         let matches = context
             .arg_helper
             .get_argument_values::<String>("cli")
             .unwrap();
-        let to_complete = matches.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
+        let mut to_complete = matches.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
         if to_complete.is_empty() {
             return Ok(());
         }
+        to_complete = to_complete[..cursor_index + 1].to_vec();
         let matches = context
             .root_command
             .clap_command
