@@ -439,7 +439,7 @@ impl CommandInterface for DeriveCommand {
             NodePathType::Product(path) => path.get_qualified_path(),
             _ => {
                 return Err(format!(
-                    "Current branch is not a product. You can create one with the {} command and/or {} one."
+                    "Current branch is not a product. You can create one with the {} command and/or {} one.",
                     "product".italic().bold(),
                     "checkout".italic().bold(),
                 )
