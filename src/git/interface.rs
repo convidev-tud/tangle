@@ -251,6 +251,11 @@ impl GitInterface {
     pub fn cherry_pick(&self, commit: &str) -> Result<Output, GitError> {
         Ok(self.raw_git_interface.run(vec!["cherry-pick", commit])?)
     }
+    pub fn reset_hard(&self, commit: &str) -> Result<Output, GitError> {
+        Ok(self
+            .raw_git_interface
+            .run(vec!["reset", "--hard", commit])?)
+    }
 }
 
 #[cfg(test)]

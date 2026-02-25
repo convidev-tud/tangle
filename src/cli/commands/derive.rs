@@ -9,11 +9,10 @@ use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt::{Display, Formatter, format};
+use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 const FEATURES: &str = "features";
-const PRODUCT: &str = "product";
 const ALLOW_STEPWISE_DERIVATION: &str = "allow_stepwise_derivation";
 const CONTINUE: &str = "continue";
 const ABORT: &str = "abort";
@@ -146,6 +145,9 @@ impl DerivationMetadata {
     pub fn get_state(&self) -> DerivationState {
         DerivationState::from_string(&self.state)
     }
+    pub fn get_id(&self) -> &String {
+        &self.id
+    }
 }
 
 fn make_derivation_commit_message(
@@ -221,11 +223,7 @@ fn clique_to_paths(
     paths
 }
 
-fn get_last_metadata(
-    product: &QualifiedPath,
-    context: &CommandContext,
-) -> Result<Option<DerivationMetadata>, Box<dyn Error>> {
-    let commits = context.git.get_commit_history(product)?;
+fn get_last_metadata(commits: &Vec<Commit>) -> Result<Option<DerivationMetadata>, Box<dyn Error>> {
     let last_state =
         commits
             .iter()
@@ -239,26 +237,59 @@ fn get_last_metadata(
     }
 }
 
+fn get_derivation_start_metadata(
+    id: &str,
+    commits: &Vec<Commit>,
+) -> Result<Option<(DerivationMetadata, usize)>, Box<dyn Error>> {
+    let mut searched: Option<DerivationMetadata> = None;
+    let mut i: usize = 0;
+    for (index, commit) in commits.iter().enumerate() {
+        let parsed = parse_derivation_commit_message(commit);
+        match parsed {
+            Some(result) => {
+                let unpacked = result?;
+                if unpacked.get_id() == id {
+                    match unpacked.get_state() {
+                        DerivationState::Starting => {
+                            i = index;
+                            searched = Some(unpacked);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+    if searched.is_some() {
+        Ok(Some((searched.unwrap(), i)))
+    } else {
+        Ok(None)
+    }
+}
+
 fn handle_abort(
     last_state: &Option<DerivationMetadata>,
+    commits: &Vec<Commit>,
     abort: bool,
     context: &CommandContext,
 ) -> Result<bool, Box<dyn Error>> {
     match (last_state, abort) {
         (None, true) => Err("Derivation not started, there is nothing to abort".into()),
-        (Some(last_state), true) => {
-            match last_state.get_state() {
-                DerivationState::Finished => {
-                    Err("Derivation finished, there is nothing to abort".into())
-                }
-                _ => {
-                    context.info("Aborting current derivation process");
-                    // TODO
-                    context.info("Reset to last clean state");
-                    Ok(true)
-                }
+        (Some(last_state), true) => match last_state.get_state() {
+            DerivationState::Finished => {
+                Err("Derivation finished, there is nothing to abort".into())
             }
-        }
+            _ => {
+                context.info("Aborting current derivation process");
+                let (_, index) =
+                    get_derivation_start_metadata(last_state.get_id(), commits)?.unwrap();
+                let commit = commits.get(index+1).unwrap();
+                context.git.reset_hard(commit.get_hash())?;
+                context.info(format!("Reset to last clean state ({})", commit.get_hash()));
+                Ok(true)
+            }
+        },
         (_, false) => Ok(false),
     }
 }
@@ -307,8 +338,7 @@ fn handle_full_derivation(
     metadata: DerivationMetadata,
     context: &mut CommandContext,
 ) -> Result<(), Box<dyn Error>> {
-    let mut finished =
-        derivation_without_conflicts(features, metadata, context)?;
+    let mut finished = derivation_without_conflicts(features, metadata, context)?;
     finished.as_finished();
     context
         .git
@@ -329,8 +359,7 @@ fn handle_partial_derivation(
 ) -> Result<(), Box<dyn Error>> {
     match stepwise {
         true => {
-            let mut progress =
-                derivation_without_conflicts(mergeable, metadata, context)?;
+            let mut progress = derivation_without_conflicts(mergeable, metadata, context)?;
             progress.as_in_progress();
             context
                 .git
@@ -346,7 +375,7 @@ fn handle_partial_derivation(
             context.info(
                 "\nUse --continue to merge missing features step-wise and solve their conflicts",
             );
-        },
+        }
         false => {
             context.info(format!(
                 "Can merge {} feature(s) {}:\n",
@@ -409,7 +438,7 @@ impl CommandDefinition for DeriveCommand {
         Command::new("derive")
             .about("Derive a product")
             .disable_help_subcommand(true)
-            .arg(Arg::new(FEATURES).action(ArgAction::Append).required(true))
+            .arg(Arg::new(FEATURES).action(ArgAction::Append))
             .arg(
                 Arg::new(ALLOW_STEPWISE_DERIVATION)
                     .long("allow-partial-derivation")
@@ -458,10 +487,12 @@ impl CommandInterface for DeriveCommand {
             .arg_helper
             .get_argument_value::<bool>(ABORT)
             .unwrap();
-        let last_state = get_last_metadata(&product_path, context)?;
+
+        let commits = context.git.get_commit_history(&product_path)?;
+        let last_state = get_last_metadata(&commits)?;
 
         // handle abort flag
-        if handle_abort(&last_state, abort_derivation, context)? {
+        if handle_abort(&last_state, &commits, abort_derivation, context)? {
             return Ok(());
         }
         // handle continue flag
@@ -496,7 +527,6 @@ impl CommandInterface for DeriveCommand {
             .git
             .empty_commit(make_derivation_commit_message(&initial_metadata)?.as_str())?;
 
-        context.info("Checking for conflicts");
         let mergeable_features = calculate_mergeable_features(&all_features, &context)?;
 
         // no conflicts
@@ -509,7 +539,13 @@ impl CommandInterface for DeriveCommand {
                 .into_iter()
                 .filter(|path| !mergeable_features.contains(path))
                 .collect();
-            handle_partial_derivation(allow_stepwise_derivation, &mergeable_features, &missing, initial_metadata, context)?;
+            handle_partial_derivation(
+                allow_stepwise_derivation,
+                &mergeable_features,
+                &missing,
+                initial_metadata,
+                context,
+            )?;
         }
         Ok(())
     }
