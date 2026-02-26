@@ -1,6 +1,6 @@
 use crate::cli::completion::*;
 use crate::cli::*;
-use crate::git::conflict::{ConflictChecker, ConflictStatistic, ConflictStatistics};
+use crate::git::conflict::{ConflictCheckBaseBranch, ConflictChecker, ConflictStatistic, ConflictStatistics};
 use crate::model::*;
 use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
@@ -13,7 +13,6 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 const FEATURES: &str = "features";
-const ALLOW_STEPWISE_DERIVATION: &str = "allow_stepwise_derivation";
 const CONTINUE: &str = "continue";
 const ABORT: &str = "abort";
 const DERIVATION_COMMENT: &str = "# DO NOT EDIT OR REMOVE THIS COMMIT\nDERIVATION STATUS\n";
@@ -65,6 +64,7 @@ impl DerivationState {
 pub struct DerivationMetadata {
     id: String,
     state: String,
+    initial_commit: String,
     completed: Vec<FeatureMetadata>,
     missing: Vec<FeatureMetadata>,
     total: Vec<FeatureMetadata>,
@@ -73,29 +73,32 @@ impl DerivationMetadata {
     fn new<S: Into<String>>(
         id: S,
         state: DerivationState,
+        initial_commit: S,
         completed: Vec<FeatureMetadata>,
         missing: Vec<FeatureMetadata>,
         total: Vec<FeatureMetadata>,
     ) -> Self {
         Self {
             id: id.into(),
+            initial_commit: initial_commit.into(),
             state: state.to_string(),
             completed,
             missing,
             total,
         }
     }
-    pub fn new_initial(features: Vec<FeatureMetadata>) -> Self {
+    pub fn new_initial<S: Into<String>>(features: Vec<FeatureMetadata>, initial_commit: S) -> Self {
         let uuid = Uuid::new_v4();
         Self::new(
             uuid.to_string(),
             DerivationState::Starting,
+            initial_commit.into(),
             Vec::new(),
             features.clone(),
             features,
         )
     }
-    pub fn new_from_previously_finished(previous: &Self, features: Vec<FeatureMetadata>) -> Self {
+    pub fn new_from_previously_finished<S: Into<String>>(previous: &Self, features: Vec<FeatureMetadata>, starting_commit: S) -> Self {
         match previous.get_state() {
             DerivationState::Finished => {}
             _ => panic!("Unexpected derivation state {}", previous.get_state()),
@@ -110,6 +113,7 @@ impl DerivationMetadata {
         Self::new(
             uuid.to_string(),
             DerivationState::Starting,
+            starting_commit.into(),
             Vec::new(),
             features,
             total,
@@ -147,6 +151,9 @@ impl DerivationMetadata {
     }
     pub fn get_id(&self) -> &String {
         &self.id
+    }
+    pub fn get_initial_commit(&self) -> &String {
+        &self.initial_commit
     }
 }
 
@@ -237,40 +244,8 @@ fn get_last_metadata(commits: &Vec<Commit>) -> Result<Option<DerivationMetadata>
     }
 }
 
-fn get_derivation_start_metadata(
-    id: &str,
-    commits: &Vec<Commit>,
-) -> Result<Option<(DerivationMetadata, usize)>, Box<dyn Error>> {
-    let mut searched: Option<DerivationMetadata> = None;
-    let mut i: usize = 0;
-    for (index, commit) in commits.iter().enumerate() {
-        let parsed = parse_derivation_commit_message(commit);
-        match parsed {
-            Some(result) => {
-                let unpacked = result?;
-                if unpacked.get_id() == id {
-                    match unpacked.get_state() {
-                        DerivationState::Starting => {
-                            i = index;
-                            searched = Some(unpacked);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            None => {}
-        }
-    }
-    if searched.is_some() {
-        Ok(Some((searched.unwrap(), i)))
-    } else {
-        Ok(None)
-    }
-}
-
 fn handle_abort(
     last_state: &Option<DerivationMetadata>,
-    commits: &Vec<Commit>,
     abort: bool,
     context: &CommandContext,
 ) -> Result<bool, Box<dyn Error>> {
@@ -282,11 +257,10 @@ fn handle_abort(
             }
             _ => {
                 context.info("Aborting current derivation process");
-                let (_, index) =
-                    get_derivation_start_metadata(last_state.get_id(), commits)?.unwrap();
-                let commit = commits.get(index+1).unwrap();
-                context.git.reset_hard(commit.get_hash())?;
-                context.info(format!("Reset to last clean state ({})", commit.get_hash()));
+                let commit = last_state.get_initial_commit();
+                context.git.abort_merge()?;
+                context.git.reset_hard(commit)?;
+                context.info(format!("Reset to state before derivation ({})", commit));
                 Ok(true)
             }
         },
@@ -297,7 +271,7 @@ fn handle_abort(
 fn handle_continue(
     last_state: &Option<DerivationMetadata>,
     continue_derivation: bool,
-    context: &CommandContext,
+    context: &mut CommandContext,
 ) -> Result<bool, Box<dyn Error>> {
     match (last_state, continue_derivation) {
         (None, true) => Err("Derivation not started, there is nothing to continue".into()),
@@ -307,16 +281,13 @@ fn handle_continue(
                     Err("Derivation finished, there is nothing to continue".into())
                 }
                 _ => {
-                    let feature_data: &FeatureMetadata = &last_state.get_missing()[0];
-                    context.info(format!(
-                        "Merging conflicting feature {}",
-                        feature_data.get_qualified_path().to_string().red()
-                    ));
-                    // TODO
-                    context.info(format!(
-                        "Please solve all conflicts and commit your changes. Thereafter, run {}",
-                        "tangl derive --continue".italic().bold()
-                    ));
+                    let missing = last_state
+                        .get_missing()
+                        .iter()
+                        .map(|m| m.get_qualified_path() )
+                        .collect::<Vec<QualifiedPath>>();
+                    let mergeable = calculate_mergeable_features(&missing, context)?;
+                    handle_derivation(&mergeable, last_state.clone(), context)?;
                     Ok(true)
                 }
             }
@@ -333,71 +304,59 @@ fn handle_continue(
     }
 }
 
-fn handle_full_derivation(
-    features: &Vec<QualifiedPath>,
-    metadata: DerivationMetadata,
-    context: &mut CommandContext,
-) -> Result<(), Box<dyn Error>> {
-    let mut finished = derivation_without_conflicts(features, metadata, context)?;
-    finished.as_finished();
-    context
-        .git
-        .empty_commit(make_derivation_commit_message(&finished)?.as_str())?;
-    context.info(format!(
-        "Derivation finished {}",
-        "without conflicts".green()
-    ));
-    Ok(())
-}
-
-fn handle_partial_derivation(
-    stepwise: bool,
+fn handle_derivation(
     mergeable: &Vec<QualifiedPath>,
-    missing: &Vec<QualifiedPath>,
     metadata: DerivationMetadata,
     context: &mut CommandContext,
 ) -> Result<(), Box<dyn Error>> {
-    match stepwise {
-        true => {
-            let mut progress = derivation_without_conflicts(mergeable, metadata, context)?;
+    let mut progress = derivation_without_conflicts(mergeable, metadata, context)?;
+    progress.mark_as_completed(mergeable);
+    context.info(format!(
+        "{} features where merged {}:\n",
+        mergeable.len().to_string().green(),
+        "successfully".green(),
+    ));
+    for path in mergeable.iter() {
+        context.info(format!("  {}", path.to_string().green()))
+    }
+    match progress.get_missing().len() {
+        0 => {
+            progress.as_finished();
+            context
+                .git
+                .empty_commit(make_derivation_commit_message(&progress)?.as_str())?;
+            context.info(format!(
+                "\nNo missing features remain. Derivation {}.:\n",
+                "complete".green(),
+            ));
+        }
+        _ => {
             progress.as_in_progress();
             context
                 .git
                 .empty_commit(make_derivation_commit_message(&progress)?.as_str())?;
             context.info(format!(
-                "Merged {} features, while {} are still missing:\n",
-                mergeable.len().to_string().green(),
-                missing.len().to_string().red()
+                "\n{} {} feature(s) remain(s):\n",
+                progress.get_missing().len().to_string().red(),
+                "conflicting".red()
             ));
-            for path in missing.iter() {
-                context.info(format!("  {}", path.to_string().red()))
+            for data in progress.get_missing().iter() {
+                context.info(format!("  {}", data.get_qualified_path().to_string().red()))
             }
-            context.info(
-                "\nUse --continue to merge missing features step-wise and solve their conflicts",
-            );
-        }
-        false => {
+            let to_merge = progress.get_missing()[0].get_qualified_path();
             context.info(format!(
-                "Can merge {} feature(s) {}:\n",
-                mergeable.len().to_string().green(),
-                "without conflicts".green()
+                "\nNow merging:\n\n   {}",
+                to_merge.to_string().yellow(),
             ));
-            for path in mergeable.iter() {
-                context.info(format!("  {}", path.to_string().green()));
-            }
+            context.git.merge(&vec![to_merge])?;
             context.info(format!(
-                "\n{} feature(s) {}:\n",
-                missing.len().to_string().red(),
-                "will produce conflicts".red()
+                "\nPlease solve all conflicts and commit your changes. Thereafter, run {} to continue the derivation.",
+                "tangl derive --continue".purple()
             ));
-            for path in missing.iter() {
-                context.info(format!("  {}", path.to_string().red()));
-            }
-            context.info(
-                "\nHint: Use the --allow-stepwise-derivation \
-                    to merge all conflict-free features \
-                    and to perform a step-wise derivation to solve all conflicts manually.",
-            );
+            context.info(format!(
+                "Use {} to abort the current derivation process.",
+                "tangl derive --abort".purple()
+            ));
         }
     }
     Ok(())
@@ -408,7 +367,7 @@ fn calculate_mergeable_features(
     context: &CommandContext,
 ) -> Result<Vec<QualifiedPath>, Box<dyn Error>> {
     let (id_to_path, path_to_id) = map_paths_to_id(features);
-    let conflicts: ConflictStatistics = ConflictChecker::new(&context.git)
+    let conflicts: ConflictStatistics = ConflictChecker::new(&context.git, ConflictCheckBaseBranch::Current)
         .check_all(features)?
         .collect();
     if conflicts.n_errors() > 0 {
@@ -440,12 +399,6 @@ impl CommandDefinition for DeriveCommand {
             .disable_help_subcommand(true)
             .arg(Arg::new(FEATURES).action(ArgAction::Append))
             .arg(
-                Arg::new(ALLOW_STEPWISE_DERIVATION)
-                    .long("allow-partial-derivation")
-                    .action(ArgAction::SetTrue)
-                    .long_help("TODO"),
-            )
-            .arg(
                 Arg::new(CONTINUE)
                     .long("continue")
                     .action(ArgAction::SetTrue)
@@ -475,10 +428,6 @@ impl CommandInterface for DeriveCommand {
                 .into());
             }
         };
-        let allow_stepwise_derivation = context
-            .arg_helper
-            .get_argument_value::<bool>(ALLOW_STEPWISE_DERIVATION)
-            .unwrap();
         let continue_derivation = context
             .arg_helper
             .get_argument_value::<bool>(CONTINUE)
@@ -492,7 +441,7 @@ impl CommandInterface for DeriveCommand {
         let last_state = get_last_metadata(&commits)?;
 
         // handle abort flag
-        if handle_abort(&last_state, &commits, abort_derivation, context)? {
+        if handle_abort(&last_state,abort_derivation, context)? {
             return Ok(());
         }
         // handle continue flag
@@ -517,36 +466,23 @@ impl CommandInterface for DeriveCommand {
         let initial_metadata = match last_state {
             Some(state) => match state.get_state() {
                 DerivationState::Finished => {
-                    DerivationMetadata::new_from_previously_finished(&state, features_metadata)
+                    DerivationMetadata::new_from_previously_finished(&state, features_metadata, commits[0].get_hash())
                 }
                 _ => panic!("Unexpected derivation state {}", state.get_state()),
             },
-            None => DerivationMetadata::new_initial(features_metadata),
+            None => DerivationMetadata::new_initial(features_metadata, commits[0].get_hash()),
         };
         context
             .git
             .empty_commit(make_derivation_commit_message(&initial_metadata)?.as_str())?;
+        let missing_features: Vec<QualifiedPath> = initial_metadata
+            .get_missing()
+            .iter()
+            .map(|m| m.get_qualified_path() )
+            .collect();
 
-        let mergeable_features = calculate_mergeable_features(&all_features, &context)?;
-
-        // no conflicts
-        if mergeable_features.len() == all_features.len() {
-            handle_full_derivation(&mergeable_features, initial_metadata, context)?;
-        }
-        // conflicts
-        else {
-            let missing: Vec<QualifiedPath> = all_features
-                .into_iter()
-                .filter(|path| !mergeable_features.contains(path))
-                .collect();
-            handle_partial_derivation(
-                allow_stepwise_derivation,
-                &mergeable_features,
-                &missing,
-                initial_metadata,
-                context,
-            )?;
-        }
+        let mergeable_features = calculate_mergeable_features(&missing_features, &context)?;
+        handle_derivation(&mergeable_features, initial_metadata, context)?;
         Ok(())
     }
     fn shell_complete(

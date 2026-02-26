@@ -121,13 +121,19 @@ impl FromIterator<ConflictStatistic> for ConflictStatistics {
     }
 }
 
+pub enum ConflictCheckBaseBranch {
+    Current,
+    Custom(QualifiedPath),
+}
+
 pub struct ConflictChecker<'a> {
     interface: &'a GitInterface,
+    base_branch: ConflictCheckBaseBranch,
 }
 
 impl<'a> ConflictChecker<'a> {
-    pub fn new(interface: &'a GitInterface) -> Self {
-        Self { interface }
+    pub fn new(interface: &'a GitInterface, base_branch: ConflictCheckBaseBranch) -> Self {
+        Self { interface, base_branch }
     }
 
     pub fn check_all(
@@ -162,9 +168,12 @@ impl<'a> ConflictChecker<'a> {
 
     fn check_two(&self, l: &QualifiedPath, r: &QualifiedPath) -> Result<bool, GitError> {
         let current_path = self.interface.get_current_qualified_path()?;
-        let current_area = self.interface.get_current_area()?;
-        self.interface
-            .checkout(&current_area.get_qualified_path())?;
+        match &self.base_branch {
+            ConflictCheckBaseBranch::Custom(path) => {
+                self.interface.checkout(path)?;
+            }
+            _ => {}
+        };
         let temporary = QualifiedPath::from("tmp");
         self.interface.create_branch_no_mut(&temporary)?;
         self.interface.checkout_raw(&temporary)?;

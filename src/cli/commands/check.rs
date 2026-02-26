@@ -1,6 +1,6 @@
 use crate::cli::completion::CompletionHelper;
 use crate::cli::*;
-use crate::git::conflict::{ConflictChecker, ConflictStatistics};
+use crate::git::conflict::{ConflictCheckBaseBranch, ConflictChecker, ConflictStatistics};
 use crate::model::{
     ByQPathFilteringNodePathTransformer, HasBranchFilteringNodePathTransformer,
     NodePathTransformer, NodePathType, QPathFilteringMode, QualifiedPath,
@@ -33,7 +33,8 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
         None => return Err("Nothing to check: no features exist".into()),
     };
     let current_path = context.git.get_current_node_path()?;
-    let checker = ConflictChecker::new(&context.git);
+    let area = context.git.get_current_area()?.get_qualified_path();
+    let checker = ConflictChecker::new(&context.git, ConflictCheckBaseBranch::Custom(area));
     let statistics: ConflictStatistics = match (all, maybe_feature, maybe_targets) {
         // all AND source are not set => error
         (false, None, _) => return Err("Feature must be provided if --all is not set".into()),
