@@ -44,7 +44,7 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
                 .iter_children_req()
                 .map(|child| child.get_qualified_path())
                 .collect();
-            checker.check_all(&all_features)?.collect()
+            checker.check_n_to_n_pairwise(&all_features)?.collect()
         }
         // all is not set, source is set, target not => check source against all
         (false, Some(source), None) => {
@@ -73,7 +73,7 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
                 })
                 .collect();
             checker
-                .check_1_to_n(&qualified_source, &all_other_features)?
+                .check_1_to_n_pairwise(&qualified_source, &all_other_features)?
                 .collect()
         }
         (false, Some(source), Some(targets)) => {
@@ -83,7 +83,7 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
                 .map(|target| current_path.get_qualified_path() + QualifiedPath::from(target))
                 .collect();
             checker
-                .check_1_to_n(&qualified_source, &qualified_targets)?
+                .check_1_to_n_pairwise(&qualified_source, &qualified_targets)?
                 .collect()
         }
     };

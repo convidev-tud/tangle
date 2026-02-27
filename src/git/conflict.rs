@@ -6,24 +6,24 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum ConflictStatistic {
-    OK((QualifiedPath, QualifiedPath)),
-    CONFLICT((QualifiedPath, QualifiedPath)),
-    ERROR((QualifiedPath, QualifiedPath), GitError),
+    OK(Vec<QualifiedPath>),
+    CONFLICT(Vec<QualifiedPath>),
+    ERROR(Vec<QualifiedPath>, GitError),
 }
 
 impl PartialEq for ConflictStatistic {
     fn eq(&self, other: &Self) -> bool {
         match other {
-            Self::OK((other_l, other_r)) => match self {
-                Self::OK((self_l, self_r)) => self_l == other_l && self_r == other_r,
+            Self::OK(other_paths) => match self {
+                Self::OK(self_paths) => other_paths == self_paths,
                 _ => false,
             },
-            Self::CONFLICT((other_l, other_r)) => match self {
-                Self::CONFLICT((self_l, self_r)) => self_l == other_l && self_r == other_r,
+            Self::CONFLICT(other_paths) => match self {
+                Self::CONFLICT(self_paths) => other_paths == self_paths,
                 _ => false,
             },
-            Self::ERROR((other_l, other_r), _) => match self {
-                Self::ERROR((self_l, self_r), _) => self_l == other_l && self_r == other_r,
+            Self::ERROR(other_paths, _) => match self {
+                Self::ERROR(self_paths, _) => other_paths == self_paths,
                 _ => false,
             },
         }
@@ -32,15 +32,27 @@ impl PartialEq for ConflictStatistic {
 
 impl Display for ConflictStatistic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn format(paths: &Vec<QualifiedPath>) -> String {
+            paths
+                .iter()
+                .map(|p| p.to_string().blue().to_string())
+                .collect::<Vec<_>>()
+                .join(" - ")
+        }
         let formatted = match self {
-            ConflictStatistic::OK((l, r)) => {
-                format!("{} and {} ", l, r) + "OK".green().to_string().as_str()
+            ConflictStatistic::OK(paths) => {
+                format!("{} {}", format(paths), "OK".green())
             }
-            ConflictStatistic::CONFLICT((l, r)) => {
-                format!("{} and {} ", l, r) + "CONFLICT".red().to_string().as_str()
+            ConflictStatistic::CONFLICT(paths) => {
+                format!("{} {}", format(paths), "CONFLICT".red())
             }
-            ConflictStatistic::ERROR((l, r), _) => {
-                format!("{} and {} ", l, r) + "ERROR".green().to_string().as_str()
+            ConflictStatistic::ERROR(paths, error) => {
+                format!(
+                    "{} {}:\n{}",
+                    format(paths),
+                    "ERROR".red(),
+                    error.to_string().red()
+                )
             }
         };
         f.write_str(formatted.as_str())
@@ -133,10 +145,13 @@ pub struct ConflictChecker<'a> {
 
 impl<'a> ConflictChecker<'a> {
     pub fn new(interface: &'a GitInterface, base_branch: ConflictCheckBaseBranch) -> Self {
-        Self { interface, base_branch }
+        Self {
+            interface,
+            base_branch,
+        }
     }
 
-    pub fn check_all(
+    pub fn check_n_to_n_pairwise(
         &self,
         paths: &Vec<QualifiedPath>,
     ) -> Result<impl Iterator<Item = ConflictStatistic>, GitError> {
@@ -149,19 +164,19 @@ impl<'a> ConflictChecker<'a> {
 
         let iterator = feature_combinations.into_iter().map(|(l, r)| {
             let statistic = self.check_two(l, r);
-            self.build_statistic(l.clone(), r.clone(), statistic)
+            self.build_statistic(vec![l.clone(), r.clone()], statistic)
         });
         Ok(iterator)
     }
 
-    pub fn check_1_to_n(
+    pub fn check_1_to_n_pairwise(
         &self,
         source: &QualifiedPath,
         targets: &Vec<QualifiedPath>,
     ) -> Result<impl Iterator<Item = ConflictStatistic>, GitError> {
         let iterator = targets.into_iter().map(move |target| {
             let statistic = self.check_two(source, target);
-            self.build_statistic(source.clone(), target.clone(), statistic)
+            self.build_statistic(vec![source.clone(), target.clone()], statistic)
         });
         Ok(iterator)
     }
@@ -192,16 +207,15 @@ impl<'a> ConflictChecker<'a> {
 
     fn build_statistic(
         &self,
-        l: QualifiedPath,
-        r: QualifiedPath,
+        paths: Vec<QualifiedPath>,
         result: Result<bool, GitError>,
     ) -> ConflictStatistic {
         match result {
             Ok(stat) => match stat {
-                true => ConflictStatistic::OK((l, r)),
-                false => ConflictStatistic::CONFLICT((l, r)),
+                true => ConflictStatistic::OK(paths),
+                false => ConflictStatistic::CONFLICT(paths),
             },
-            Err(e) => ConflictStatistic::ERROR((l, r), e),
+            Err(e) => ConflictStatistic::ERROR(paths, e),
         }
     }
 }

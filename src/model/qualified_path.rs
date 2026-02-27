@@ -102,7 +102,7 @@ impl Add for QualifiedPath {
 }
 impl Display for QualifiedPath {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.to_string().blue().to_string().as_str())
+        f.write_str(self.path.join("/").as_str())
     }
 }
 impl Index<usize> for QualifiedPath {
@@ -130,9 +130,6 @@ impl QualifiedPath {
                 prefix.join("/")
             }
         }
-    }
-    pub fn to_string(&self) -> String {
-        self.path.join("/")
     }
     pub fn push<S: Into<String>>(&mut self, path: S) {
         let qualified_str = path.into().replace("*", "").replace("_", "");
