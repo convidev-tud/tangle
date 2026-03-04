@@ -1,3 +1,4 @@
+use crate::cli::CommandContext;
 use crate::git::error::GitError;
 use crate::git::interface::GitInterface;
 use crate::model::QualifiedPath;
@@ -78,7 +79,7 @@ impl Display for ConflictStatistic {
                                 p.to_string().strikethrough().to_string()
                             }
                         }
-                        None => p.to_string().blue().to_string(),
+                        None => p.to_string().green().to_string(),
                     })
                     .collect::<Vec<_>>()
                     .join(" <- "),
@@ -181,6 +182,7 @@ impl FromIterator<ConflictStatistic> for ConflictStatistics {
         Self::from_iter(iter.into_iter())
     }
 }
+#[derive(Debug, Clone)]
 pub struct ConflictChecker<'a> {
     interface: &'a GitInterface,
 }
@@ -202,7 +204,7 @@ impl<'a> ConflictChecker<'a> {
         Ok(iterator)
     }
 
-    pub fn check_k_permutations_against_base(
+    pub fn check_permutations_against_base(
         &self,
         targets: Vec<QualifiedPath>,
         base: &QualifiedPath,
@@ -218,20 +220,34 @@ impl<'a> ConflictChecker<'a> {
         Ok(iterator)
     }
 
-    pub fn check_k_permutations_against_multiple(
+    pub fn check_permutations_against_multiple(
         &self,
-        left: Vec<QualifiedPath>,
-        right: Vec<QualifiedPath>,
+        left: &Vec<QualifiedPath>,
+        right: &Vec<QualifiedPath>,
         k: usize,
     ) -> Result<impl Iterator<Item = ConflictStatistic>, GitError> {
-        if k < 1 { panic!("k must be at least 1") }
-        let iterator = left.into_iter().flat_map(move |l| {
-            right.clone().into_iter().permutations(k).flat_map(move |r| {
-                let mut to_check: Vec<QualifiedPath> = vec![l.clone()];
-                to_check.extend(r.iter().map(|p| p.clone()));
-                self.check_k_permutations(to_check, k+1)
+        if k < 1 {
+            panic!("k must be at least 1")
+        }
+        let iterator = left
+            .into_iter()
+            .flat_map(move |l| {
+                right
+                    .clone()
+                    .into_iter()
+                    .permutations(k)
+                    .filter_map(move |r| {
+                        if r.contains(&l) {
+                            None
+                        } else {
+                            let mut to_check: Vec<QualifiedPath> = vec![l.clone()];
+                            to_check.extend(r.iter().map(|p| p.clone()));
+                            Some(self.check_k_permutations(to_check, k + 1))
+                        }
+                    })
+                    .flatten()
             })
-        }).flatten();
+            .flatten();
         Ok(iterator)
     }
 
@@ -252,7 +268,7 @@ impl<'a> ConflictChecker<'a> {
             let success = self.interface.merge(&vec![path.clone()])?.status.success();
             if !success {
                 self.interface.abort_merge()?;
-                failed_at = Some(index);
+                failed_at = Some(index + 1);
                 break;
             }
         }
@@ -279,44 +295,129 @@ impl<'a> ConflictChecker<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Conflict2DMatrix {
-    matrix: HashMap<(QualifiedPath, QualifiedPath), i32>,
+    matrix: HashMap<QualifiedPath, HashMap<QualifiedPath, i32>>,
+    all_keys: Vec<QualifiedPath>,
 }
 
 impl Conflict2DMatrix {
     pub fn initialize(paths: &Vec<QualifiedPath>) -> Self {
-        let mut matrix: HashMap<(QualifiedPath, QualifiedPath), i32> = HashMap::new();
+        let mut matrix: HashMap<QualifiedPath, HashMap<QualifiedPath, i32>> = HashMap::new();
         for combinations in paths.iter().combinations(2) {
-            matrix.insert((combinations[0].clone(), combinations[1].clone()), 0);
-            matrix.insert((combinations[1].clone(), combinations[0].clone()), 0);
+            let l = combinations[0];
+            let r = combinations[1];
+
+            if matrix.contains_key(&l) {
+                matrix.get_mut(l).unwrap().insert(r.clone(), 0);
+            } else {
+                let mut map: HashMap<QualifiedPath, i32> = HashMap::new();
+                map.insert(r.clone(), 0);
+                matrix.insert(l.clone(), map);
+            }
+
+            if matrix.contains_key(&r) {
+                matrix.get_mut(r).unwrap().insert(l.clone(), 0);
+            } else {
+                let mut map: HashMap<QualifiedPath, i32> = HashMap::new();
+                map.insert(l.clone(), 0);
+                matrix.insert(r.clone(), map);
+            }
         }
-        Self { matrix }
+        Self { matrix, all_keys: paths.clone() }
+    }
+
+    pub fn insert(&mut self, statistic: &ConflictStatistic) {
+        match statistic {
+            ConflictStatistic::Conflict(conflict) => {
+                self.matrix.get_mut(&conflict.paths[0]).unwrap().insert(conflict.paths[1].clone(), -1);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn calculate_best_path_greedy(&self) -> Vec<QualifiedPath> {
+        let mut missing = self.all_keys.clone();
+        missing.remove(0);
+        let mut path = vec![self.all_keys[0].clone()];
+        while missing.len() > 0 {
+            let mut votes: HashMap<i32, Vec<QualifiedPath>> = HashMap::new();
+            for candidate in missing.iter() {
+                let mut vote = 0;
+                for p in path.iter() {
+                    vote += self.matrix[p].get(candidate).unwrap();
+                }
+                if votes.contains_key(&vote) {
+                    votes.get_mut(&vote).unwrap().push(candidate.clone());
+                } else {
+                    votes.insert(vote, vec![candidate.clone()]);
+                }
+            }
+            let max_vote = votes.keys().max().unwrap();
+            let max_candidates = &votes[&max_vote];
+            let winner = match max_candidates.len() {
+                0 => { panic!("Empty candidates should not be possible") }
+                1 => { max_candidates[0].clone() }
+                _ => {
+                    let start = max_candidates[0].clone();
+                    let compatibility = self.calculate_compatibility(&start);
+                    let mut highest_compatible = (start, compatibility);
+                    for candidate in max_candidates[1..].iter() {
+                        let compatibility = self.calculate_compatibility(&candidate);
+                        if compatibility > highest_compatible.1 {
+                            highest_compatible = (candidate.clone(), compatibility);
+                        }
+                    }
+                    highest_compatible.0
+                }
+            };
+            let index: usize = missing
+                .iter()
+                .enumerate()
+                .find_map(|(index, e)| {
+                    if e == &winner {
+                        Some(index)
+                    } else { None }
+                })
+                .unwrap();
+            missing.remove(index);
+            path.push(winner);
+        };
+        path
+    }
+
+    fn calculate_compatibility(&self, path: &QualifiedPath) -> i32 {
+        let table = &self.matrix[path];
+        table.values().sum::<i32>()
     }
 }
 
 pub struct ConflictAnalyzer<'a> {
     checker: ConflictChecker<'a>,
+    context: &'a CommandContext<'a>,
 }
 
 impl<'a> ConflictAnalyzer<'a> {
-    pub fn new(checker: ConflictChecker<'a>) -> Self {
-        Self { checker }
+    pub fn new(checker: ConflictChecker<'a>, context: &'a CommandContext<'a>) -> Self {
+        Self { checker, context }
     }
 
-    pub fn calculate_2d_vote_greedy_heuristics_matrix_with_merge_base(
+    pub fn calculate_2d_heuristics_matrix_with_merge_base(
         &mut self,
-        paths: Vec<QualifiedPath>,
-        base: QualifiedPath,
+        paths: &Vec<QualifiedPath>,
+        base: &QualifiedPath,
     ) -> Result<Conflict2DMatrix, GitError> {
         let mut all = vec![base.clone()];
         all.extend(paths.iter().map(|path| path.clone()));
-        let matrix = Conflict2DMatrix::initialize(&all);
+        let mut matrix = Conflict2DMatrix::initialize(&all);
 
         let mut conflicting_with_base: Vec<QualifiedPath> = vec![];
+        self.context.debug("Checking against base pairwise");
         for s in self
             .checker
-            .check_k_permutations_against_base(paths.clone(), &base, 1)?
+            .check_permutations_against_base(paths.clone(), &base, 1)?
         {
+            self.context.debug(&s);
             match s {
                 ConflictStatistic::Conflict(merge) => {
                     conflicting_with_base.push(merge.paths[1].clone());
@@ -331,10 +432,34 @@ impl<'a> ConflictAnalyzer<'a> {
             .cloned()
             .collect();
 
-        for with_base in self.checker.check_k_permutations_against_base(to_test_with_base, &base, 3) {
-            // TODO
+        self.context.debug("Checking successful against base");
+        for with_base in
+            self.checker
+                .check_permutations_against_base(to_test_with_base, &base, 2)?
+        {
+            self.context.debug(&with_base);
+            let altered: ConflictStatistic = match with_base {
+                ConflictStatistic::Success(success) => ConflictStatistic::Success(MergeSuccess {
+                    paths: success.paths[1..].to_vec(),
+                }),
+                ConflictStatistic::Conflict(conflict) => {
+                    ConflictStatistic::Conflict(MergeConflict {
+                        paths: conflict.paths[1..].to_vec(),
+                        failed_at: conflict.failed_at,
+                    })
+                }
+                ConflictStatistic::Error(error) => return Err(error.error),
+            };
+            matrix.insert(&altered);
         }
-        for without_base in self.checker
+        self.context.debug("Checking conflicting without base");
+        for without_base in
+            self.checker
+                .check_permutations_against_multiple(&conflicting_with_base, &paths, 1)?
+        {
+            self.context.debug(&without_base);
+            matrix.insert(&without_base);
+        }
         self.checker.clean_up();
         Ok(matrix)
     }

@@ -72,7 +72,7 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
                 })
                 .collect();
             checker
-                .check_k_permutations_against_base(all_other_features, &qualified_source, 2)?
+                .check_permutations_against_base(all_other_features, &qualified_source, 2)?
                 .collect()
         }
         (false, Some(source), Some(targets)) => {
@@ -82,7 +82,7 @@ fn run_check(context: &CommandContext) -> Result<ConflictStatistics, Box<dyn Err
                 .map(|target| current_path.get_qualified_path() + QualifiedPath::from(target))
                 .collect();
             checker
-                .check_k_permutations_against_base(qualified_targets, &qualified_source, 2)?
+                .check_permutations_against_base(qualified_targets, &qualified_source, 2)?
                 .collect()
         }
     };

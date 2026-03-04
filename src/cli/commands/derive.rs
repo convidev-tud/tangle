@@ -1,15 +1,10 @@
 use crate::cli::completion::*;
 use crate::cli::*;
-use crate::git::conflict::{
-    ConflictCheckBaseBranch, ConflictChecker, ConflictStatistic, ConflictStatistics,
-};
+use crate::git::conflict::{ConflictAnalyzer, ConflictChecker};
 use crate::model::*;
 use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
-use petgraph::algo::maximal_cliques;
-use petgraph::graph::UnGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
@@ -184,59 +179,6 @@ pub fn parse_derivation_commit_message(
     }
 }
 
-fn map_paths_to_id(
-    paths: &Vec<QualifiedPath>,
-) -> (HashMap<usize, QualifiedPath>, HashMap<QualifiedPath, usize>) {
-    let mut id_to_path: HashMap<usize, QualifiedPath> = HashMap::new();
-    let mut path_to_id: HashMap<QualifiedPath, usize> = HashMap::new();
-    let mut i = 0;
-    for path in paths.iter() {
-        id_to_path.insert(i, path.clone());
-        path_to_id.insert(path.clone(), i);
-        i += 1;
-    }
-    (id_to_path, path_to_id)
-}
-
-fn build_edges(
-    conflict_data: &ConflictStatistics,
-    path_to_id: &HashMap<QualifiedPath, usize>,
-) -> Vec<(u32, u32)> {
-    conflict_data
-        .iter_ok()
-        .map(|element| match element {
-            ConflictStatistic::Success((l, r)) => {
-                let left = path_to_id.get(l).unwrap().clone() as u32;
-                let right = path_to_id.get(r).unwrap().clone() as u32;
-                (left, right)
-            }
-            _ => unreachable!(),
-        })
-        .collect()
-}
-
-fn get_max_clique(graph: &UnGraph<usize, ()>) -> Vec<usize> {
-    let cliques = maximal_cliques(graph);
-    let mut max_clique: Vec<usize> = Vec::new();
-    for clique in cliques.iter() {
-        if clique.len() > max_clique.len() {
-            max_clique = clique.iter().map(|e| e.index()).collect();
-        }
-    }
-    max_clique
-}
-
-fn clique_to_paths(
-    clique: Vec<usize>,
-    id_to_path: &HashMap<usize, QualifiedPath>,
-) -> Vec<QualifiedPath> {
-    let mut paths: Vec<QualifiedPath> = Vec::new();
-    for path in clique {
-        paths.push(id_to_path.get(&path).unwrap().clone());
-    }
-    paths
-}
-
 fn get_last_metadata(commits: &Vec<Commit>) -> Result<Option<DerivationMetadata>, Box<dyn Error>> {
     let last_state =
         commits
@@ -287,13 +229,7 @@ fn handle_continue(
                 Err("Derivation finished, there is nothing to continue".into())
             }
             _ => {
-                let missing = last_state
-                    .get_missing()
-                    .iter()
-                    .map(|m| m.get_qualified_path())
-                    .collect::<Vec<QualifiedPath>>();
-                let mergeable = calculate_features_without_conflicts(&missing, context)?;
-                handle_derivation(&mergeable, last_state.clone(), context)?;
+                handle_derivation(last_state.clone(), true, context)?;
                 Ok(true)
             }
         },
@@ -321,15 +257,7 @@ fn handle_derivation(
         .collect::<Vec<QualifiedPath>>();
     let merge_order: Vec<QualifiedPath> = match no_optimization {
         false => {
-            let likely_mergeable = calculate_features_without_conflicts(&missing, context)?;
-            let mut cloned = likely_mergeable.clone();
-            cloned.extend(
-                missing
-                    .iter()
-                    .filter(|m| !likely_mergeable.contains(m))
-                    .cloned(),
-            );
-            cloned
+            approximate_merge_order(&missing, context)?
         }
         true => {
             context.info(
@@ -341,13 +269,13 @@ fn handle_derivation(
         }
     };
     let mut completed: Vec<QualifiedPath> = Vec::new();
-    for path in merge_order {
+    for path in merge_order.iter() {
         let path_vec = vec![path.clone()];
         let result = context.git.merge(&path_vec)?;
         match result.status.success() {
             true => {
                 progress.mark_as_completed(&path_vec);
-                completed.push(path)
+                completed.push(path.clone())
             }
             false => {
                 context.git.abort_merge()?;
@@ -357,10 +285,10 @@ fn handle_derivation(
     }
     context.info(format!(
         "{} features where merged {}:\n",
-        merge_order.len().to_string().green(),
+        completed.len().to_string().green(),
         "successfully".green(),
     ));
-    for path in merge_order.iter() {
+    for path in completed.iter() {
         context.info(format!("  {}", path.to_string().green()))
     }
     match progress.get_missing().len() {
@@ -370,7 +298,7 @@ fn handle_derivation(
                 .git
                 .empty_commit(make_derivation_commit_message(&progress)?.as_str())?;
             context.info(format!(
-                "\nNo missing features remain. Derivation {}.:\n",
+                "\nNo missing features remain; Derivation {}",
                 "complete".green(),
             ));
         }
@@ -406,22 +334,16 @@ fn handle_derivation(
     Ok(())
 }
 
-fn calculate_features_without_conflicts(
+fn approximate_merge_order(
     features: &Vec<QualifiedPath>,
     context: &CommandContext,
 ) -> Result<Vec<QualifiedPath>, Box<dyn Error>> {
-    let (id_to_path, path_to_id) = map_paths_to_id(features);
-    let conflicts: ConflictStatistics =
-        ConflictChecker::new(&context.git, ConflictCheckBaseBranch::Current)
-            .check_k_permutations(features)?
-            .collect();
-    if conflicts.n_errors() > 0 {
-        return Err("Errors occurred while checking for conflicts.".into());
-    }
-    let edges = build_edges(&conflicts, &path_to_id);
-    let graph = UnGraph::<usize, ()>::from_edges(&edges);
-    let max_clique = get_max_clique(&graph);
-    Ok(clique_to_paths(max_clique, &id_to_path))
+    let checker = ConflictChecker::new(&context.git);
+    let mut analyzer = ConflictAnalyzer::new(checker, context);
+    let current_path = context.git.get_current_qualified_path()?;
+    let matrix =
+        analyzer.calculate_2d_heuristics_matrix_with_merge_base(features, &current_path)?;
+    Ok(matrix.calculate_best_path_greedy())
 }
 
 #[derive(Clone, Debug)]
@@ -451,6 +373,7 @@ impl CommandDefinition for DeriveCommand {
                     .action(ArgAction::SetTrue)
                     .help("Disable optimization of merge order"),
             )
+            .arg(verbose())
     }
 }
 
@@ -522,13 +445,7 @@ impl CommandInterface for DeriveCommand {
         context
             .git
             .empty_commit(make_derivation_commit_message(&initial_metadata)?.as_str())?;
-        let missing_features: Vec<QualifiedPath> = initial_metadata
-            .get_missing()
-            .iter()
-            .map(|m| m.get_qualified_path())
-            .collect();
 
-        let mergeable_features = calculate_features_without_conflicts(&missing_features, &context)?;
         handle_derivation(initial_metadata, no_optimization, context)?;
         Ok(())
     }
