@@ -119,13 +119,13 @@ impl CommandInterface for CheckCommand {
     fn run_command(&self, context: &mut CommandContext) -> Result<(), Box<dyn Error>> {
         let statistics = run_check(context)?;
         for ok in statistics.iter_ok() {
-            context.debug(ok)
+            context.debug(ok.display_as_path())
         }
         for conflict in statistics.iter_conflicts() {
-            context.warn(conflict)
+            context.warn(conflict.display_as_path())
         }
         for error in statistics.iter_errors() {
-            context.error(error)
+            context.error(error.display_as_path())
         }
         if statistics.n_conflict() == 0 {
             context.info("No conflicts".green().to_string());

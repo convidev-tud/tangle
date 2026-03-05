@@ -24,10 +24,10 @@ impl FeatureMetadata {
         Self { path: path.into() }
     }
     pub fn from_qualified_paths(paths: &Vec<QualifiedPath>) -> Vec<Self> {
-        paths.iter().map(|path| Self::new(path.clone()) ).collect()
+        paths.iter().map(|path| Self::new(path.clone())).collect()
     }
     pub fn qualified_paths(metadata: &Vec<Self>) -> Vec<QualifiedPath> {
-        metadata.iter().map(|m| m.get_qualified_path() ).collect()
+        metadata.iter().map(|m| m.get_qualified_path()).collect()
     }
     pub fn get_qualified_path(&self) -> QualifiedPath {
         QualifiedPath::from(&self.path)
@@ -149,7 +149,9 @@ impl DerivationMetadata {
         let old_missing = FeatureMetadata::qualified_paths(&self.missing);
         let mut new_missing: Vec<QualifiedPath> = Vec::new();
         for new in new_order.iter() {
-            if !old_missing.contains(new) { panic!("Cannot reorder: tried to introduce new feature") }
+            if !old_missing.contains(new) {
+                panic!("Cannot reorder: tried to introduce new feature")
+            }
             new_missing.push(new.clone());
         }
         self.missing = FeatureMetadata::from_qualified_paths(&new_missing);
@@ -247,11 +249,12 @@ fn handle_abort(
 fn handle_continue(
     last_state: &Option<DerivationMetadata>,
     continue_derivation: bool,
+    optimize: bool,
     context: &mut CommandContext,
 ) -> Result<bool, Box<dyn Error>> {
-    match (last_state, continue_derivation) {
-        (None, true) => Err("No derivation in progress, there is nothing to continue".into()),
-        (Some(last_state), true) => match last_state.get_state() {
+    match (last_state, continue_derivation, optimize) {
+        (None, true, _) => Err("No derivation in progress, there is nothing to continue".into()),
+        (Some(last_state), true, _) => match last_state.get_state() {
             DerivationState::Finished => {
                 Err("No derivation in progress, there is nothing to continue".into())
             }
@@ -260,7 +263,7 @@ fn handle_continue(
                 Ok(true)
             }
         },
-        (Some(last_state), false) => match last_state.get_state() {
+        (Some(last_state), false, false) => match last_state.get_state() {
             DerivationState::Starting | DerivationState::InProgress => Err(format!(
                 "Derivation incomplete, please use {} to finish it first",
                 "tangl derive --continue".purple()
@@ -268,7 +271,7 @@ fn handle_continue(
             .into()),
             _ => Ok(false),
         },
-        (_, false) => Ok(false),
+        (_, false, _) => Ok(false),
     }
 }
 
@@ -281,49 +284,71 @@ fn get_next_state(
     let current_path = context.git.get_current_qualified_path()?;
     let current_commit = context.git.get_commit_history(&current_path)?[0].clone();
     let mut state = match (progress, optimization, !features.is_empty()) {
-        (None, true, false) => return Err("Cannot optimize merge order: No derivation in progress".into()),
-        (None, _, true) => DerivationMetadata::new_initial(FeatureMetadata::from_qualified_paths(&features), current_commit.get_hash()),
-        (Some(progress), true, false) => {
-            match progress.get_state() {
-                DerivationState::Finished => return Err("Cannot optimize merge order: No derivation in progress".into()),
-                _ => progress,
+        (None, true, false) => {
+            return Err("Cannot optimize merge order: No derivation in progress".into());
+        }
+        (None, _, true) => DerivationMetadata::new_initial(
+            FeatureMetadata::from_qualified_paths(&features),
+            current_commit.get_hash(),
+        ),
+        (Some(progress), true, false) => match progress.get_state() {
+            DerivationState::Finished => {
+                return Err("Cannot optimize merge order: No derivation in progress".into());
             }
+            _ => progress,
         },
         (Some(progress), _, true) => {
             match progress.get_state() {
-                DerivationState::Finished => DerivationMetadata::from_previously_finished(&progress, FeatureMetadata::from_qualified_paths(&features), current_commit.get_hash()),
+                DerivationState::Finished => DerivationMetadata::from_previously_finished(
+                    &progress,
+                    FeatureMetadata::from_qualified_paths(&features),
+                    current_commit.get_hash(),
+                ),
                 // handled by continue
                 _ => unreachable!(),
             }
-        },
+        }
         // handled by continue
         _ => unreachable!(),
     };
 
     match optimization {
         true => {
-            let original_order = state.get_missing();
-            let approximation = approximate_merge_order(&FeatureMetadata::qualified_paths(&original_order), &context)?;
+            let original_order = FeatureMetadata::qualified_paths(state.get_missing());
+            let approximation = approximate_merge_order(
+                &original_order,
+                &context,
+            )?;
             context.info("Suggesting the following merge order:\n");
-            context.info(&approximation);
+            context.info(approximation.display_as_path());
 
             let new_order = match approximation {
                 ConflictStatistic::Success(success) => {
                     context.info("\nExpecting no conflicts");
                     success.paths
-                },
+                }
                 ConflictStatistic::Conflict(conflict) => {
-                    context.info(format!("\nExpecting {} conflicts", conflict.failed_at.len().to_string().red()));
+                    context.info(format!(
+                        "\nExpecting {} conflicts",
+                        conflict.failed_at.len().to_string().red()
+                    ));
                     conflict.paths
-                },
+                }
                 ConflictStatistic::Error(error) => return Err(error.error.into()),
             };
-            state.reorder_missing(&new_order[1..].to_vec());
-            context.git.empty_commit(make_derivation_commit_message(&state)?.as_str())?;
-            context.info(format!("If you are satisfied, run {} to commence the derivation", "--continue".purple()));
+            if original_order != new_order[1..].to_vec() {
+                state.reorder_missing(&new_order[1..].to_vec());
+                context
+                    .git
+                    .empty_commit(make_derivation_commit_message(&state)?.as_str())?;
+            }
+            context.info(format!(
+                "\nIf you are satisfied, run {} to commence the derivation",
+                "--continue".purple()
+            ));
             Ok(None)
         }
-        false => { Ok(Some(state)) }
+        false => Ok(Some(state)),
     }
 }
 
@@ -478,7 +503,7 @@ impl CommandInterface for DeriveCommand {
         if handle_abort(&last_state, abort_derivation, context)? {
             return Ok(());
         }
-        if handle_continue(&last_state, continue_derivation, context)? {
+        if handle_continue(&last_state, continue_derivation, optimization, context)? {
             return Ok(());
         }
         let new_state = get_next_state(last_state, optimization, all_features, context)?;

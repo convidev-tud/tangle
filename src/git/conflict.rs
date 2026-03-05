@@ -5,7 +5,6 @@ use crate::model::QualifiedPath;
 use colored::Colorize;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeSuccess {
@@ -16,6 +15,7 @@ pub struct MergeSuccess {
 pub struct MergeConflict {
     pub paths: Vec<QualifiedPath>,
     pub failed_at: Vec<usize>,
+    pub tested: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -55,69 +55,58 @@ impl PartialEq for ConflictStatistic {
     }
 }
 
-impl Display for ConflictStatistic {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn format(paths: &Vec<QualifiedPath>, fail_at: Option<&Vec<usize>>, error: bool) -> String {
-            match error {
-                true => paths
-                    .iter()
-                    .map(|p| p.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" <- ")
-                    .red()
-                    .to_string(),
-                false => paths
+impl ConflictStatistic {
+    pub fn display_as_path(&self) -> String {
+        match self {
+            ConflictStatistic::Success(success) => {
+                let s = success
+                    .paths
                     .iter()
                     .enumerate()
-                    .map(|(index, p)| match fail_at {
-                        Some(fail_at) => {
-                            let first = fail_at.get(0).unwrap();
-                            if &index < first {
-                                p.to_string().green().to_string()
-                            } else if &index == first {
-                                p.to_string().red().to_string()
-                            } else {
-                                p.to_string().strikethrough().to_string()
-                            }
+                    .map(|(index, p)| {
+                        if index == 0 {
+                            p.to_string().blue().to_string()
+                        } else {
+                            p.to_string().green().to_string()
                         }
-                        None => p.to_string().green().to_string(),
                     })
-                    .collect::<Vec<_>>()
-                    .join(" <- "),
-            }
-        }
-        let formatted = match self {
-            ConflictStatistic::Success(success) => {
-                format!("{} {}", format(&success.paths, None, false), "OK".green())
+                    .join(" <- ");
+                format!("{} {}", s, "OK".green())
             }
             ConflictStatistic::Conflict(conflict) => {
-                format!(
-                    "{} {}",
-                    format(&conflict.paths, Some(&conflict.failed_at), false),
-                    "CONFLICT".red()
-                )
+                let s = conflict
+                    .paths
+                    .iter()
+                    .enumerate()
+                    .map(|(index, p)| {
+                        if index == 0 {
+                            p.to_string().blue().to_string()
+                        } else {
+                            if !conflict.tested.contains(&index) {
+                                p.to_string().strikethrough().to_string()
+                            } else if conflict.failed_at.contains(&index) {
+                                p.to_string().red().to_string()
+                            } else {
+                                p.to_string().green().to_string()
+                            }
+                        }
+                    })
+                    .join(" <- ");
+                format!("{} {}", s, "CONFLICT".red())
             }
             ConflictStatistic::Error(failure) => {
-                format!(
-                    "{} {}:\n{}",
-                    format(&failure.paths, None, true),
-                    "ERROR".red(),
-                    failure.error.to_string().red()
-                )
+                let s = failure
+                    .paths
+                    .iter()
+                    .map(|p| p.to_string())
+                    .join(" <- ")
+                    .strikethrough()
+                    .red();
+                format!("{} {}:\n{}", s, "ERROR".red(), failure.error.to_string().red())
             }
-        };
-        f.write_str(formatted.as_str())
+        }
     }
-}
-impl Into<String> for ConflictStatistic {
-    fn into(self) -> String {
-        self.to_string()
-    }
-}
-impl Into<String> for &ConflictStatistic {
-    fn into(self) -> String {
-        self.to_string()
-    }
+    // pub fn display_as_list(&self) -> impl Iterator<Item=String> {}
 }
 
 pub struct ConflictStatistics {
@@ -254,11 +243,15 @@ impl<'a> ConflictChecker<'a> {
 
     pub fn clean_up(&mut self) {}
 
-    fn check_chain(&self, chain: &Vec<QualifiedPath>) -> Result<Option<usize>, GitError> {
+    fn check_chain(
+        &self,
+        chain: &Vec<QualifiedPath>,
+    ) -> Result<(Option<usize>, Vec<usize>), GitError> {
         if chain.len() < 2 {
             panic!("Chain has to contain at least 2 paths")
         }
         let mut failed_at: Option<usize> = None;
+        let mut tested: Vec<usize> = vec![];
         let current_path = self.interface.get_current_qualified_path()?;
         let base = &chain[0];
         self.interface.checkout(base)?;
@@ -270,25 +263,27 @@ impl<'a> ConflictChecker<'a> {
             if !success {
                 self.interface.abort_merge()?;
                 failed_at = Some(index + 1);
+                tested.push(index + 1);
                 break;
             }
         }
         self.interface.checkout(&current_path)?;
         self.interface.delete_branch(&temporary)?;
-        Ok(failed_at)
+        Ok((failed_at, tested))
     }
 
     fn build_statistic(
         &self,
         paths: Vec<QualifiedPath>,
-        result: Result<Option<usize>, GitError>,
+        result: Result<(Option<usize>, Vec<usize>), GitError>,
     ) -> ConflictStatistic {
         match result {
-            Ok(stat) => match stat {
+            Ok((failed_at, tested)) => match failed_at {
                 None => ConflictStatistic::Success(MergeSuccess { paths }),
                 Some(value) => ConflictStatistic::Conflict(MergeConflict {
                     paths,
                     failed_at: vec![value],
+                    tested,
                 }),
             },
             Err(e) => ConflictStatistic::Error(MergeError { paths, error: e }),
@@ -325,13 +320,19 @@ impl Conflict2DMatrix {
                 matrix.insert(r.clone(), map);
             }
         }
-        Self { matrix, all_keys: paths.clone() }
+        Self {
+            matrix,
+            all_keys: paths.clone(),
+        }
     }
 
-    pub fn insert(&mut self, statistic: &ConflictStatistic) {
+    pub fn insert(&mut self, statistic: ConflictStatistic) {
         match statistic {
             ConflictStatistic::Conflict(conflict) => {
-                self.matrix.get_mut(&conflict.paths[0]).unwrap().insert(conflict.paths[1].clone(), -1);
+                self.matrix
+                    .get_mut(&conflict.paths[0])
+                    .unwrap()
+                    .insert(conflict.paths[1].clone(), -1);
             }
             _ => {}
         }
@@ -356,17 +357,22 @@ impl Conflict2DMatrix {
                 }
             }
             let max_vote = votes.keys().max().unwrap();
-            if max_vote < &0 { has_conflicts = true; }
+            if max_vote < &0 {
+                has_conflicts = true;
+            }
             let max_candidates = &votes[&max_vote];
             let winner = match max_candidates.len() {
-                0 => { panic!("Empty candidates should not be possible") }
-                1 => { max_candidates[0].clone() }
+                0 => {
+                    panic!("Empty candidates should not be possible")
+                }
+                1 => max_candidates[0].clone(),
                 _ => {
                     let start = max_candidates[0].clone();
                     let compatibility = self.calculate_forward_compatibility(&start, &missing);
                     let mut highest_compatible = (start, compatibility);
                     for candidate in max_candidates[1..].iter() {
-                        let compatibility = self.calculate_forward_compatibility(&candidate, &missing);
+                        let compatibility =
+                            self.calculate_forward_compatibility(&candidate, &missing);
                         if compatibility > highest_compatible.1 {
                             highest_compatible = (candidate.clone(), compatibility);
                         }
@@ -377,42 +383,44 @@ impl Conflict2DMatrix {
             let index: usize = missing
                 .iter()
                 .enumerate()
-                .find_map(|(index, e)| {
-                    if e == &winner {
-                        Some(index)
-                    } else { None }
-                })
+                .find_map(|(index, e)| if e == &winner { Some(index) } else { None })
                 .unwrap();
             missing.remove(index);
             final_path.push((winner, max_vote.clone()));
-        };
+        }
         match has_conflicts {
-            false => ConflictStatistic::Success(MergeSuccess { paths: final_path.into_iter().map(|(path, _)| path).collect() }),
+            false => ConflictStatistic::Success(MergeSuccess {
+                paths: final_path.into_iter().map(|(path, _)| path).collect(),
+            }),
             true => {
                 let mut paths: Vec<QualifiedPath> = Vec::new();
+                let mut tested: Vec<usize> = Vec::new();
                 let mut failed_at: Vec<usize> = Vec::new();
                 for (index, (p, i)) in final_path.into_iter().enumerate() {
                     paths.push(p);
                     if i < 0 {
                         failed_at.push(index);
                     }
+                    tested.push(index);
                 }
-                ConflictStatistic::Conflict(MergeConflict { paths, failed_at })
+                ConflictStatistic::Conflict(MergeConflict {
+                    paths,
+                    failed_at,
+                    tested,
+                })
             }
         }
     }
 
-    fn calculate_forward_compatibility(&self, element: &QualifiedPath, missing: &Vec<QualifiedPath>) -> i32 {
+    fn calculate_forward_compatibility(
+        &self,
+        element: &QualifiedPath,
+        missing: &Vec<QualifiedPath>,
+    ) -> i32 {
         let table = &self.matrix[element];
         table
             .iter()
-            .filter_map(|(k, v)| {
-                if missing.contains(k) {
-                    Some(*v)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(k, v)| if missing.contains(k) { Some(*v) } else { None })
             .sum::<i32>()
     }
 }
@@ -442,7 +450,7 @@ impl<'a> ConflictAnalyzer<'a> {
             .checker
             .check_permutations_against_base(paths.clone(), &base, 1)?
         {
-            self.context.debug(&s);
+            self.context.debug(s.display_as_path());
             match s {
                 ConflictStatistic::Conflict(merge) => {
                     conflicting_with_base.push(merge.paths[1].clone());
@@ -462,7 +470,7 @@ impl<'a> ConflictAnalyzer<'a> {
             self.checker
                 .check_permutations_against_base(to_test_with_base, &base, 2)?
         {
-            self.context.debug(&with_base);
+            self.context.debug(with_base.display_as_path());
             let altered: ConflictStatistic = match with_base {
                 ConflictStatistic::Success(success) => ConflictStatistic::Success(MergeSuccess {
                     paths: success.paths[1..].to_vec(),
@@ -470,20 +478,21 @@ impl<'a> ConflictAnalyzer<'a> {
                 ConflictStatistic::Conflict(conflict) => {
                     ConflictStatistic::Conflict(MergeConflict {
                         paths: conflict.paths[1..].to_vec(),
-                        failed_at: conflict.failed_at,
+                        failed_at: conflict.failed_at.iter().map(|i| i - 1).collect(),
+                        tested: conflict.tested.iter().map(|i| i - 1).collect(),
                     })
                 }
                 ConflictStatistic::Error(error) => return Err(error.error),
             };
-            matrix.insert(&altered);
+            matrix.insert(altered);
         }
         self.context.debug("Checking conflicting without base");
         for without_base in
             self.checker
                 .check_permutations_against_multiple(&conflicting_with_base, &paths, 1)?
         {
-            self.context.debug(&without_base);
-            matrix.insert(&without_base);
+            self.context.debug(without_base.display_as_path());
+            matrix.insert(without_base);
         }
         self.checker.clean_up();
         Ok(matrix)
