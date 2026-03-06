@@ -1,9 +1,70 @@
+use std::error::Error;
 use crate::git::error::{GitError, GitInterfaceError};
 use crate::model::*;
 use crate::util::u8_to_string;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+
+trait HasGitInterface {
+    fn get_cli(&self) -> &GitCLI;
+    fn get_current_path(&self) -> Result<QualifiedPath, Box<dyn Error>> {
+        let raw = u8_to_string(
+            &self
+                .get_cli()
+                .run(vec!["branch", "--show-current"])?
+                .stdout,
+        );
+        Ok(QualifiedPath::from(raw))
+    }
+}
+
+pub trait ToGitBranch {
+    fn to_git_branch(&self) -> String;
+}
+
+pub trait CanHaveBranch: HasGitInterface + ToQualifiedPath + ToGitBranch {
+    fn checkout(&self) -> Result<Output, Box<dyn Error>> {
+        let out = self.get_cli().run(vec!["checkout", self.to_git_branch().as_str()])?;
+        match out.status.success() {
+            true => Ok(out),
+            false => Err(format!("Cannot checkout {}: path does not exist", self.to_qualified_path()).into()),
+        }
+    }
+
+    fn is_checked_out(&self) -> Result<bool, Box<dyn Error>> {
+        let current = self.get_current_path()?;
+        Ok(current == self.to_qualified_path())
+    }
+
+    fn commit(&self, message: &str) -> Result<Output, Box<dyn Error>> {
+        Ok(self.get_cli().run(vec!["commit", "-m", message])?)
+    }
+
+    fn empty_commit(&self, message: &str) -> Result<Output, Box<dyn Error>> {
+        Ok(self
+            .get_cli()
+            .run(vec!["commit", "--allow-empty", "-m", message])?)
+    }
+
+    fn cherry_pick(&self, commit: &str) -> Result<Output, Box<dyn Error>> {
+        Ok(self.get_cli().run(vec!["cherry-pick", commit])?)
+    }
+
+    fn reset_hard(&self, commit: &str) -> Result<Output, Box<dyn Error>> {
+        Ok(self
+            .get_cli()
+            .run(vec!["reset", "--hard", commit])?)
+    }
+
+    fn merge(&self, path: impl CanHaveBranch) -> Result<Output, Box<dyn Error>> {
+        Ok(self.get_cli().run(vec!["merge", path.to_git_branch().as_str()])?)
+    }
+
+    fn abort_merge(&self) -> Result<Output, Box<dyn Error>> {
+        Ok(self.get_cli().run(vec!["merge", "--abort"])?)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum GitPath {
@@ -126,19 +187,6 @@ impl GitInterface {
     pub fn status(&self) -> Result<Output, GitError> {
         Ok(self.raw_git_interface.run(vec!["status"])?)
     }
-    pub(super) fn checkout_raw(&self, path: &QualifiedPath) -> Result<Output, GitError> {
-        Ok(self
-            .raw_git_interface
-            .run(vec!["checkout", path.to_git_branch().as_str()])?)
-    }
-    pub fn checkout(&self, path: &QualifiedPath) -> Result<Output, GitError> {
-        if !self.model.has_branch(&path) {
-            return Err(GitError::GitInterface(GitInterfaceError::new(
-                format!("Cannot checkout branch {}: does not exist", path).as_str(),
-            )));
-        }
-        self.checkout_raw(&path)
-    }
     pub(super) fn create_branch_no_mut(&self, path: &QualifiedPath) -> Result<Output, GitError> {
         let branch = path.to_git_branch();
         let commands = vec!["branch", branch.as_str()];
@@ -159,16 +207,6 @@ impl GitInterface {
         let branch = path.to_git_branch();
         let commands = vec!["branch", "-D", branch.as_str()];
         Ok(self.raw_git_interface.run(commands)?)
-    }
-    pub fn merge(&self, paths: &Vec<QualifiedPath>) -> Result<Output, GitError> {
-        let mut base = vec!["merge"];
-        let new_paths: Vec<String> = paths.iter().map(|s| s.to_git_branch()).collect();
-        let converted_paths: Vec<&str> = new_paths.iter().map(|p| p.as_str()).collect();
-        base.extend(converted_paths);
-        Ok(self.raw_git_interface.run(base)?)
-    }
-    pub fn abort_merge(&self) -> Result<Output, GitError> {
-        Ok(self.raw_git_interface.run(vec!["merge", "--abort"])?)
     }
     pub fn create_tag(&self, tag: &QualifiedPath) -> Result<Output, GitError> {
         let current_branch = self.get_current_qualified_path()?;
@@ -239,22 +277,6 @@ impl GitInterface {
             .split("\n")
             .map(|e| e.to_string())
             .collect())
-    }
-    pub fn commit(&self, message: &str) -> Result<Output, GitError> {
-        Ok(self.raw_git_interface.run(vec!["commit", "-m", message])?)
-    }
-    pub fn empty_commit(&self, message: &str) -> Result<Output, GitError> {
-        Ok(self
-            .raw_git_interface
-            .run(vec!["commit", "--allow-empty", "-m", message])?)
-    }
-    pub fn cherry_pick(&self, commit: &str) -> Result<Output, GitError> {
-        Ok(self.raw_git_interface.run(vec!["cherry-pick", commit])?)
-    }
-    pub fn reset_hard(&self, commit: &str) -> Result<Output, GitError> {
-        Ok(self
-            .raw_git_interface
-            .run(vec!["reset", "--hard", commit])?)
     }
 }
 

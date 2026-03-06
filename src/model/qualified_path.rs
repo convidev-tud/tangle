@@ -216,6 +216,10 @@ impl QualifiedPath {
     }
 }
 
+pub trait ToQualifiedPath {
+    fn to_qualified_path(&self) -> QualifiedPath;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

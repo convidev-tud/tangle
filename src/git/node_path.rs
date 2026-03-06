@@ -1,5 +1,5 @@
 use crate::model::*;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
