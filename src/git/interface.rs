@@ -184,7 +184,7 @@ impl GitInterface {
             .raw_git_interface
             .run(vec!["tag", "-d", tagged.to_git_branch().as_str()])?)
     }
-    pub fn get_commit_history(&self, branch: &QualifiedPath) -> Result<Vec<Commit>, GitError> {
+    pub fn get_commit_history(&self, branch: &QualifiedPath) -> Result<Vec<BaseCommit>, GitError> {
         let raw_hashes = u8_to_string(
             &self
                 .raw_git_interface
@@ -194,7 +194,7 @@ impl GitInterface {
         .trim()
         .to_string();
         let all_hashes = raw_hashes.split("\n").collect::<Vec<&str>>();
-        let commits: Vec<Commit> = all_hashes
+        let commits: Vec<BaseCommit> = all_hashes
             .into_iter()
             .map(|hash| {
                 let trimmed = hash.trim();
@@ -207,7 +207,7 @@ impl GitInterface {
                 )
                 .trim()
                 .to_string();
-                Commit::new(trimmed, commit_message)
+                BaseCommit::new(trimmed, commit_message)
             })
             .collect();
         Ok(commits)
